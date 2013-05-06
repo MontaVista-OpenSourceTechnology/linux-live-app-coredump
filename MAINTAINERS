@@ -11137,6 +11137,12 @@ F:	drivers/soc/litex/litex_soc_ctrl.c
 F:	drivers/tty/serial/liteuart.c
 F:	include/linux/litex.h
 
+LIVE APPLICATION COREDUMP
+M:	Corey Minyard <cminyard@mvista.com>
+S:	Maintained
+F:	include/linux/livedump.h
+F:	kernel/livedump.c
+
 LIVE PATCHING
 M:	Josh Poimboeuf <jpoimboe@redhat.com>
 M:	Jiri Kosina <jikos@kernel.org>
