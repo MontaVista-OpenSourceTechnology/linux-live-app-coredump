@@ -94,6 +94,7 @@
 #include <linux/thread_info.h>
 #include <linux/stackleak.h>
 #include <linux/kasan.h>
+#include <linux/livedump.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -1822,6 +1823,7 @@ static __always_inline void delayed_free_task(struct task_struct *tsk)
  * flags). The actual kick-off is left to the caller.
  */
 __latent_entropy struct task_struct *copy_process(
+					u64 clone_internal_flags,
 					struct pid *pid,
 					int trace,
 					int node,
@@ -1872,8 +1874,10 @@ __latent_entropy struct task_struct *copy_process(
 	/*
 	 * If the new process will be in a different pid or user namespace
 	 * do not allow it to share a thread group with the forking task.
+	 * Livedump is a special case, it handles all the setup itself.
 	 */
-	if (clone_flags & CLONE_THREAD) {
+	if (clone_flags & CLONE_THREAD &&
+			!(clone_internal_flags & CLONE_INT_LIVEDUMP)) {
 		if ((clone_flags & (CLONE_NEWUSER | CLONE_NEWPID)) ||
 		    (task_active_pid_ns(current) != nsp->pid_ns_for_children))
 			return ERR_PTR(-EINVAL);
@@ -2151,6 +2155,8 @@ __latent_entropy struct task_struct *copy_process(
 #endif
 	clear_tsk_latency_tracing(p);
 
+	livedump_set_task_dump(p, NULL);
+
 	/* ok, now we should be set up.. */
 	p->pid = pid_nr(pid);
 	if (clone_flags & CLONE_THREAD) {
@@ -2228,6 +2234,10 @@ __latent_entropy struct task_struct *copy_process(
 		retval = -ENOMEM;
 		goto bad_fork_cancel_cgroup;
 	}
+
+	retval = livedump_check_tsk_copy(p, clone_flags, clone_internal_flags);
+	if (retval)
+		goto bad_fork_cancel_cgroup;
 
 	/* Let kill terminate clone/fork in the middle */
 	if (fatal_signal_pending(current)) {
@@ -2378,7 +2388,7 @@ struct task_struct *fork_idle(int cpu)
 		.flags = CLONE_VM,
 	};
 
-	task = copy_process(&init_struct_pid, 0, cpu_to_node(cpu), &args);
+	task = copy_process(0, &init_struct_pid, 0, cpu_to_node(cpu), &args);
 	if (!IS_ERR(task)) {
 		init_idle_pids(task);
 		init_idle(task, cpu);
@@ -2427,7 +2437,7 @@ long _do_fork(struct kernel_clone_args *args)
 			trace = 0;
 	}
 
-	p = copy_process(NULL, trace, NUMA_NO_NODE, args);
+	p = copy_process(0, NULL, trace, NUMA_NO_NODE, args);
 	add_latent_entropy();
 
 	if (IS_ERR(p))
