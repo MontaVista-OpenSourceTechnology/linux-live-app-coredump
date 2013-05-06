@@ -37,6 +37,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/signal.h>
+#include <linux/livedump.h>
 
 #include <asm/param.h>
 #include <asm/uaccess.h>
@@ -979,6 +980,18 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 
 	assert_spin_locked(&t->sighand->siglock);
 
+#ifdef CONFIG_LIVEDUMP
+	if (unlikely(t->group_leader->extra_flags & PFE_LIVEDUMP)) {
+		/* We're doing live dump, do not receive alien signals. */
+		if (sig != SIGKILL)
+			return 0;
+		if (!thread_group_leader(t) && !in_livedump(t, COPY_THREADS))
+			/* For the thread, we're expecting SIGKILL from
+			   cloning group leader. This is not the one. */
+			return 0;
+	}
+#endif
+
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t,
 			from_ancestor_ns || (info == SEND_SIG_FORCED)))
@@ -1067,6 +1080,12 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 out_set:
 	signalfd_notify(t, sig);
 	sigaddset(&pending->signal, sig);
+#ifdef CONFIG_LIVEDUMP
+	if (unlikely(t->dump)) {
+		signal_wake_up(t, 1);
+		goto ret;
+	}
+#endif
 	complete_signal(sig, t, group);
 ret:
 	trace_signal_generate(sig, info, t, group, result);
@@ -1125,7 +1144,7 @@ __group_send_sig_info(int sig, struct siginfo *info, struct task_struct *p)
 	return send_signal(sig, info, p, 1);
 }
 
-static int
+int
 specific_send_sig_info(int sig, struct siginfo *info, struct task_struct *t)
 {
 	return send_signal(sig, info, t, 0);
@@ -2208,6 +2227,26 @@ relock:
 				continue;
 		}
 
+#ifdef CONFIG_LIVEDUMP
+		if (signr == SIGKILL) {
+			if (in_livedump(current, COPY_LEADER)) {
+				spin_unlock_irq(&sighand->siglock);
+				livedump_clone_leader();
+				signr = 0;
+				goto exiting;
+			} else if (in_livedump(current, COPY_THREADS)) {
+				spin_unlock_irq(&sighand->siglock);
+				livedump_clone_thread();
+				signr = 0;
+				goto exiting;
+			} else if (in_livedump(current, PERFORM_DUMP) &&
+				   thread_group_leader(current)) {
+				spin_unlock_irq(&sighand->siglock);
+				livedump_perform_dump(&ksig->info);
+			}
+		}
+#endif /* CONFIG_LIVEDUMP */
+
 		ka = &sighand->action[signr-1];
 
 		/* Trace actually delivered signals. */
@@ -2309,6 +2348,9 @@ relock:
 	}
 	spin_unlock_irq(&sighand->siglock);
 
+#ifdef CONFIG_LIVEDUMP
+ exiting:
+#endif
 	ksig->sig = signr;
 	return ksig->sig > 0;
 }

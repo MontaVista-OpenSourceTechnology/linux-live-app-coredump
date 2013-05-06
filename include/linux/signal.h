@@ -231,6 +231,7 @@ struct pt_regs;
 extern int next_signal(struct sigpending *pending, sigset_t *mask);
 extern int do_send_sig_info(int sig, struct siginfo *info,
 				struct task_struct *p, bool group);
+extern int specific_send_sig_info(int, struct siginfo *, struct task_struct *);
 extern int group_send_sig_info(int sig, struct siginfo *info, struct task_struct *p);
 extern int __group_send_sig_info(int, struct siginfo *, struct task_struct *);
 extern int do_sigtimedwait(const sigset_t *, siginfo_t *,
