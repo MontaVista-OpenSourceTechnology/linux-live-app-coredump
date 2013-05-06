@@ -12325,6 +12325,12 @@ F:	drivers/tty/serial/liteuart.c
 F:	include/linux/litex.h
 N:	litex
 
+LIVE APPLICATION COREDUMP
+M:	Corey Minyard <cminyard@mvista.com>
+S:	Maintained
+F:	include/linux/livedump.h
+F:	kernel/livedump.c
+
 LIVE PATCHING
 M:	Josh Poimboeuf <jpoimboe@kernel.org>
 M:	Jiri Kosina <jikos@kernel.org>

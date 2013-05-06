@@ -51,6 +51,9 @@ struct fs_struct;
 struct futex_pi_state;
 struct io_context;
 struct io_uring_task;
+#ifdef CONFIG_LIVEDUMP
+struct livedump_context;
+#endif
 struct mempolicy;
 struct nameidata;
 struct nsproxy;
@@ -1495,6 +1498,10 @@ struct task_struct {
 	struct bpf_local_storage __rcu	*bpf_storage;
 	/* Used for BPF run context */
 	struct bpf_run_ctx		*bpf_ctx;
+#endif
+#ifdef CONFIG_LIVEDUMP
+	struct livedump_context		*livedump;
+	bool				livedump_sigpending;
 #endif
 
 #ifdef CONFIG_GCC_PLUGIN_STACKLEAK
