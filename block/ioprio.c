@@ -142,7 +142,7 @@ free_uid:
 	return ret;
 }
 
-static int get_task_ioprio(struct task_struct *p)
+int get_task_ioprio(struct task_struct *p)
 {
 	int ret;
 
@@ -155,6 +155,7 @@ static int get_task_ioprio(struct task_struct *p)
 out:
 	return ret;
 }
+EXPORT_SYMBOL_GPL(get_task_ioprio);
 
 int ioprio_best(unsigned short aprio, unsigned short bprio)
 {
