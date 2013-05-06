@@ -76,6 +76,7 @@
 #include <linux/compiler.h>
 #include <linux/sysctl.h>
 #include <linux/kcov.h>
+#include <linux/livedump.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -1662,7 +1663,7 @@ __latent_entropy struct task_struct *copy_process(
 	if (retval)
 		goto bad_fork_cleanup_io;
 
-	if (pid != &init_struct_pid) {
+	if (pid != &init_struct_pid && !livedump_is_clone(clone_flags)) {
 		pid = alloc_pid(p->nsproxy->pid_ns_for_children);
 		if (IS_ERR(pid)) {
 			retval = PTR_ERR(pid);
@@ -1702,6 +1703,8 @@ __latent_entropy struct task_struct *copy_process(
 	clear_tsk_thread_flag(p, TIF_SYSCALL_EMU);
 #endif
 	clear_all_latency_tracing(p);
+
+	livedump_set_task_dump(p, NULL);
 
 	/* ok, now we should be set up.. */
 	p->pid = pid_nr(pid);
@@ -1770,11 +1773,13 @@ __latent_entropy struct task_struct *copy_process(
 	*/
 	recalc_sigpending();
 	if (signal_pending(current)) {
-		spin_unlock(&current->sighand->siglock);
-		write_unlock_irq(&tasklist_lock);
 		retval = -ERESTARTNOINTR;
 		goto bad_fork_cancel_cgroup;
 	}
+
+	retval = livedump_check_tsk_copy(p, clone_flags);
+	if (retval)
+		goto bad_fork_cancel_cgroup;
 
 	if (likely(p->pid)) {
 		ptrace_init_task(p, (clone_flags & CLONE_PTRACE) || trace);
@@ -1825,6 +1830,8 @@ __latent_entropy struct task_struct *copy_process(
 	return p;
 
 bad_fork_cancel_cgroup:
+	spin_unlock(&current->sighand->siglock);
+	write_unlock_irq(&tasklist_lock);
 	cgroup_cancel_fork(p);
 bad_fork_free_pid:
 	threadgroup_change_end(current);
@@ -1911,6 +1918,11 @@ long _do_fork(unsigned long clone_flags,
 	struct task_struct *p;
 	int trace = 0;
 	long nr;
+
+#ifdef CONFIG_LIVEDUMP
+	if (clone_flags & CLONE_LIVEDUMP)
+		return -EINVAL;
+#endif
 
 	/*
 	 * Determine whether and which event to report to ptracer.  When
