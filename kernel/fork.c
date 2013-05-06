@@ -74,6 +74,7 @@
 #include <linux/uprobes.h>
 #include <linux/aio.h>
 #include <linux/compiler.h>
+#include <linux/livedump.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -875,7 +876,17 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 
 	tsk->mm = NULL;
 	tsk->active_mm = NULL;
-
+#ifdef CONFIG_LIVEDUMP
+	if ((clone_flags & (CLONE_LIVEDUMP | CLONE_THREAD)) ==
+	    (CLONE_LIVEDUMP | CLONE_THREAD)) {
+		BUG_ON(!current->dump);
+		/* Assign temporary VM to livedumped clone. */
+		tsk->mm = current->dump->leader->mm;
+		tsk->active_mm = tsk->mm;
+		atomic_inc(&tsk->mm->mm_users);
+		return 0;
+	}
+#endif
 	/*
 	 * Are we cloning a kernel thread?
 	 *
@@ -986,6 +997,14 @@ static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 	struct sighand_struct *sig;
 
 	if (clone_flags & CLONE_SIGHAND) {
+#ifdef CONFIG_LIVEDUMP
+		if (clone_flags & CLONE_LIVEDUMP) {
+			rcu_assign_pointer(tsk->sighand,
+					   current->dump->leader->sighand);
+			atomic_inc(&tsk->sighand->count);
+			return 0;
+		}
+#endif
 		atomic_inc(&current->sighand->count);
 		return 0;
 	}
@@ -1033,8 +1052,17 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct signal_struct *sig;
 
-	if (clone_flags & CLONE_THREAD)
+	if (clone_flags & CLONE_THREAD) {
+#ifdef CONFIG_LIVEDUMP
+		if (clone_flags & CLONE_LIVEDUMP) {
+			tsk->signal = current->dump->leader->signal;
+			atomic_inc(&tsk->signal->sigcnt);
+			atomic_inc(&tsk->signal->live);
+			return 0;
+		}
+#endif
 		return 0;
+	}
 
 	sig = kmem_cache_zalloc(signal_cachep, GFP_KERNEL);
 	tsk->signal = sig;
@@ -1133,12 +1161,12 @@ init_task_pid(struct task_struct *task, enum pid_type type, struct pid *pid)
  * parts of the process environment (as per the clone
  * flags). The actual kick-off is left to the caller.
  */
-static struct task_struct *copy_process(unsigned long clone_flags,
-					unsigned long stack_start,
-					unsigned long stack_size,
-					int __user *child_tidptr,
-					struct pid *pid,
-					int trace)
+struct task_struct *copy_process(unsigned long clone_flags,
+				 unsigned long stack_start,
+				 unsigned long stack_size,
+				 int __user *child_tidptr,
+				 struct pid *pid,
+				 int trace)
 {
 	int retval;
 	struct task_struct *p;
@@ -1161,7 +1189,13 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	 * thread groups also imply shared VM. Blocking this case allows
 	 * for various simplifications in other code.
 	 */
-	if ((clone_flags & CLONE_SIGHAND) && !(clone_flags & CLONE_VM))
+	if ((clone_flags & CLONE_SIGHAND) &&
+#ifdef CONFIG_LIVEDUMP
+	    /* Livedumping clones uses CLONE_THREAD | CLONE_SIGHAND and
+	       not CLONE_VM since VM is handled specially for them. */
+	    !(clone_flags & CLONE_LIVEDUMP) &&
+#endif
+	    !(clone_flags & CLONE_VM))
 		return ERR_PTR(-EINVAL);
 
 	/*
@@ -1232,6 +1266,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	delayacct_tsk_init(p);	/* Must remain after dup_task_struct() */
 	p->flags &= ~(PF_SUPERPRIV | PF_WQ_WORKER);
 	p->flags |= PF_FORKNOEXEC;
+#ifdef CONFIG_LIVEDUMP
+	p->extra_flags &= ~PFE_LIVEDUMP;
+#endif
 	INIT_LIST_HEAD(&p->children);
 	INIT_LIST_HEAD(&p->sibling);
 	rcu_copy_process(p);
@@ -1356,7 +1393,12 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	if (retval)
 		goto bad_fork_cleanup_io;
 
-	if (pid != &init_struct_pid) {
+	if (pid != &init_struct_pid
+#ifdef CONFIG_LIVEDUMP
+	    /* Livedumped clones always uses the same PID. */
+	    && !(clone_flags & CLONE_LIVEDUMP)
+#endif
+	    ) {
 		retval = -ENOMEM;
 		pid = alloc_pid(p->nsproxy->pid_ns_for_children);
 		if (!pid)
@@ -1396,6 +1438,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 #endif
 	clear_all_latency_tracing(p);
 
+#ifdef CONFIG_LIVEDUMP
+	p->dump = NULL;
+#endif
 	/* ok, now we should be set up.. */
 	p->pid = pid_nr(pid);
 	if (clone_flags & CLONE_THREAD) {
@@ -1472,6 +1517,17 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 			attach_pid(p, PIDTYPE_PGID);
 			attach_pid(p, PIDTYPE_SID);
 			__this_cpu_inc(process_counts);
+#ifdef CONFIG_LIVEDUMP
+		} else if ((clone_flags & (CLONE_LIVEDUMP | CLONE_THREAD)) ==
+			   (CLONE_LIVEDUMP | CLONE_THREAD)) {
+			/* This is a thread cloned for livedumping. */
+			BUG_ON(!current->dump);
+			if (current->dump->leader)
+				p->group_leader = current->dump->leader;
+			list_add_tail_rcu(&p->thread_group,
+					  &p->group_leader->thread_group);
+			p->dump = get_dump(current->dump);
+#endif
 		} else {
 			current->signal->nr_threads++;
 			atomic_inc(&current->signal->live);
@@ -1484,7 +1540,19 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 		attach_pid(p, PIDTYPE_PID);
 		nr_threads++;
 	}
-
+#ifdef CONFIG_LIVEDUMP
+	if (unlikely(in_livedump(current, COPY_THREADS)) &&
+	    !(clone_flags & CLONE_LIVEDUMP) && (clone_flags & CLONE_THREAD)) {
+		/*
+		 * This thread is currently being livedumped and the
+		 * dumping process is in COPY_THREADS stage. Make sure
+		 * the new thread is livedumped, too.
+		 */
+		atomic_inc(&p->dump->nr_clone_remains);
+		p->dump = get_dump(current->dump);
+		livedump_request(p);
+	}
+#endif
 	total_forks++;
 	spin_unlock(&current->sighand->siglock);
 	write_unlock_irq(&tasklist_lock);
