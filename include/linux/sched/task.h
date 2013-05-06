@@ -75,8 +75,12 @@ extern void exit_itimers(struct signal_struct *);
 
 extern long _do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *, unsigned long);
 extern long do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *);
+
+/* For clone_internal_flags in copy_process() */
+#define CLONE_INT_LIVEDUMP	0x00000001 /* set if cloned for a live dump */
+
 extern struct task_struct *copy_process(unsigned long, unsigned long,
-					unsigned long,
+					unsigned long, unsigned long,
 					int __user *, int __user *,
 					struct pid *, int, unsigned long, int);
 struct task_struct *fork_idle(int);

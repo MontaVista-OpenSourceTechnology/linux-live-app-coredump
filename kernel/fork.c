@@ -94,6 +94,7 @@
 #include <linux/livepatch.h>
 #include <linux/thread_info.h>
 #include <linux/stackleak.h>
+#include <linux/livedump.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -1741,6 +1742,7 @@ static __always_inline void delayed_free_task(struct task_struct *tsk)
  */
 __latent_entropy struct task_struct *copy_process(
 					unsigned long clone_flags,
+					unsigned long clone_internal_flags,
 					unsigned long stack_start,
 					unsigned long stack_size,
 					int __user *parent_tidptr,
@@ -2077,6 +2079,8 @@ __latent_entropy struct task_struct *copy_process(
 #endif
 	clear_tsk_latency_tracing(p);
 
+	livedump_set_task_dump(p, NULL);
+
 	/* ok, now we should be set up.. */
 	p->pid = pid_nr(pid);
 	if (clone_flags & CLONE_THREAD) {
@@ -2154,6 +2158,10 @@ __latent_entropy struct task_struct *copy_process(
 		retval = -ENOMEM;
 		goto bad_fork_cancel_cgroup;
 	}
+
+	retval = livedump_check_tsk_copy(p, clone_flags, clone_internal_flags);
+	if (retval)
+		goto bad_fork_cancel_cgroup;
 
 	/* Let kill terminate clone/fork in the middle */
 	if (fatal_signal_pending(current)) {
@@ -2300,8 +2308,8 @@ static inline void init_idle_pids(struct task_struct *idle)
 struct task_struct *fork_idle(int cpu)
 {
 	struct task_struct *task;
-	task = copy_process(CLONE_VM, 0, 0, NULL, NULL, &init_struct_pid, 0, 0,
-			    cpu_to_node(cpu));
+	task = copy_process(CLONE_VM, 0, 0, 0, NULL, NULL, &init_struct_pid, 0,
+			    0, cpu_to_node(cpu));
 	if (!IS_ERR(task)) {
 		init_idle_pids(task);
 		init_idle(task, cpu);
@@ -2352,7 +2360,7 @@ long _do_fork(unsigned long clone_flags,
 			trace = 0;
 	}
 
-	p = copy_process(clone_flags, stack_start, stack_size, parent_tidptr,
+	p = copy_process(clone_flags, 0, stack_start, stack_size, parent_tidptr,
 			 child_tidptr, NULL, trace, tls, NUMA_NO_NODE);
 	add_latent_entropy();
 
