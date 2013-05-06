@@ -2921,7 +2921,7 @@ void proc_flush_task(struct task_struct *task)
 	for (i = 0; i <= pid->level; i++) {
 		upid = &pid->numbers[i];
 		proc_flush_task_mnt(upid->ns->proc_mnt, upid->nr,
-					tgid->numbers[i].nr);
+				    tgid ? tgid->numbers[i].nr : 0);
 	}
 }
 
