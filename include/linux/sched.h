@@ -125,6 +125,9 @@ struct sched_attr {
 	u64 sched_period;
 };
 
+#ifdef CONFIG_LIVEDUMP
+struct livedump_context;
+#endif
 struct exec_domain;
 struct futex_pi_state;
 struct robust_list_head;
@@ -1276,6 +1279,7 @@ struct task_struct {
 	void *stack;
 	atomic_t usage;
 	unsigned int flags;	/* per process flags, defined below */
+	unsigned int extra_flags;
 	unsigned int ptrace;
 
 #ifdef CONFIG_SMP
@@ -1701,6 +1705,9 @@ struct task_struct {
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
 	unsigned long	task_state_change;
 #endif
+#ifdef CONFIG_LIVEDUMP
+	struct livedump_context *dump;
+#endif
 };
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
@@ -1965,6 +1972,9 @@ extern void thread_group_cputime_adjusted(struct task_struct *p, cputime_t *ut, 
 #define PF_MUTEX_TESTER	0x20000000	/* Thread belongs to the rt mutex tester */
 #define PF_FREEZER_SKIP	0x40000000	/* Freezer should not count it as freezable */
 #define PF_SUSPEND_TASK 0x80000000      /* this thread called freeze_processes and should not be frozen */
+
+/* Flags in the extra_flags field */
+#define PFE_LIVEDUMP	0x00001000	/* doing live dump */
 
 /*
  * Only the _current_ task can read/write to tsk->flags, but other
@@ -2492,6 +2502,9 @@ extern int do_execveat(int, struct filename *,
 		       const char __user * const __user *,
 		       int);
 extern long do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *);
+extern struct task_struct *copy_process(unsigned long, unsigned long,
+					unsigned long, int __user *,
+					struct pid *, int);
 struct task_struct *fork_idle(int);
 extern pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags);
 
