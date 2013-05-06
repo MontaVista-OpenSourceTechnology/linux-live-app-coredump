@@ -355,10 +355,21 @@ void attach_pid(struct task_struct *task, enum pid_type type,
 		struct pid *pid)
 {
 	struct pid_link *link;
-
+#ifdef CONFIG_LIVEDUMP
+	struct hlist_node *first;
+#endif
 	link = &task->pids[type];
 	link->pid = pid;
-	hlist_add_head_rcu(&link->node, &pid->tasks[type]);
+#ifdef CONFIG_LIVEDUMP
+	/* Livedumped clone and it's origin shares pid. Since clone
+	   arrives later, adding it after origin prevents pid_task()
+	   from returning pointer to clone instead of origin. */
+	if ((type == PIDTYPE_PID) &&
+	    (first = rcu_dereference(pid->tasks[type].first)))
+		hlist_add_after_rcu(first, &link->node);
+	else
+#endif
+		hlist_add_head_rcu(&link->node, &pid->tasks[type]);
 }
 
 static void __change_pid(struct task_struct *task, enum pid_type type,
