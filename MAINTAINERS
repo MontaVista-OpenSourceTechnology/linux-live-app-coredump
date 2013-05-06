@@ -10124,6 +10124,12 @@ L:	kunit-dev@googlegroups.com
 S:	Maintained
 F:	lib/list-test.c
 
+LIVE APPLICATION COREDUMP
+M:	Corey Minyard <cminyard@mvista.com>
+S:	Maintained
+F:	include/linux/livedump.h
+F:	kernel/livedump.c
+
 LIVE PATCHING
 M:	Josh Poimboeuf <jpoimboe@redhat.com>
 M:	Jiri Kosina <jikos@kernel.org>
