@@ -70,6 +70,7 @@
 #include <linux/user_events.h>
 #include <linux/uaccess.h>
 #include <linux/pidfs.h>
+#include <linux/livedump.h>
 
 #include <uapi/linux/wait.h>
 
@@ -161,6 +162,8 @@ static void __exit_signal(struct release_task_post *post, struct task_struct *ts
 	sighand = rcu_dereference_check(tsk->sighand,
 					lockdep_tasklist_lock_is_held());
 	spin_lock(&sighand->siglock);
+
+	livedump_handle_exit(tsk);
 
 #ifdef CONFIG_POSIX_TIMERS
 	posix_cpu_timers_exit(tsk);
@@ -282,7 +285,8 @@ repeat:
 	}
 
 	write_unlock_irq(&tasklist_lock);
-	proc_flush_pid(thread_pid);
+	if (!livedump_task_is_clone(p))
+		proc_flush_pid(thread_pid);
 	put_pid(thread_pid);
 	add_device_randomness(&p->se.sum_exec_runtime,
 			      sizeof(p->se.sum_exec_runtime));
@@ -766,6 +770,9 @@ static void exit_notify(struct task_struct *tsk, int group_dead)
 				!ptrace_reparented(tsk) ?
 			tsk->exit_signal : SIGCHLD;
 		autoreap = do_notify_parent(tsk, sig);
+	} else if (livedump_task_is_clone_child(tsk)) {
+		/* Always autoreap livedumped cloned threads. */
+		autoreap = true;
 	} else if (thread_group_leader(tsk)) {
 		autoreap = thread_group_empty(tsk) &&
 			do_notify_parent(tsk, tsk->exit_signal);
