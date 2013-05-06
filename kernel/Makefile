@@ -139,6 +139,8 @@ KCOV_INSTRUMENT_stackleak.o := n
 
 obj-$(CONFIG_SCF_TORTURE_TEST) += scftorture.o
 
+obj-$(CONFIG_LIVEDUMP) += livedump.o
+
 $(obj)/configs.o: $(obj)/config_data.gz
 
 targets += config_data config_data.gz
