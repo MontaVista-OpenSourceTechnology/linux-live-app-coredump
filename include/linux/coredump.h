@@ -13,9 +13,9 @@
 extern int dump_write(struct file *file, const void *addr, int nr);
 extern int dump_seek(struct file *file, loff_t off);
 #ifdef CONFIG_COREDUMP
-extern void do_coredump(siginfo_t *siginfo);
+extern int do_coredump(siginfo_t *siginfo);
 #else
-static inline void do_coredump(siginfo_t *siginfo) {}
+static inline int do_coredump(siginfo_t *siginfo) { return 0; }
 #endif
 
 #endif /* _LINUX_COREDUMP_H */
