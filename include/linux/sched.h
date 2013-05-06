@@ -67,6 +67,9 @@ struct cfs_rq;
 struct fs_struct;
 struct io_context;
 struct io_uring_task;
+#ifdef CONFIG_LIVEDUMP
+struct livedump_context;
+#endif
 struct mempolicy;
 struct nameidata;
 struct nsproxy;
@@ -1607,6 +1610,10 @@ struct task_struct {
 #endif
 	/* Used by BPF for per-TASK xdp storage */
 	struct bpf_net_context		*bpf_net_context;
+#ifdef CONFIG_LIVEDUMP
+	struct livedump_context		*livedump;
+	bool				livedump_sigpending;
+#endif
 
 #ifdef CONFIG_KSTACK_ERASE
 	unsigned long			lowest_stack;
