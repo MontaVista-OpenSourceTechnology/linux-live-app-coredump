@@ -54,6 +54,7 @@
 #include <linux/writeback.h>
 #include <linux/shm.h>
 #include <linux/kcov.h>
+#include <linux/livedump.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -90,6 +91,8 @@ static void __exit_signal(struct task_struct *tsk)
 	sighand = rcu_dereference_check(tsk->sighand,
 					lockdep_tasklist_lock_is_held());
 	spin_lock(&sighand->siglock);
+
+	livedump_check_exit(tsk);
 
 	posix_cpu_timers_exit(tsk);
 	if (group_dead) {
@@ -176,7 +179,9 @@ repeat:
 	atomic_dec(&__task_cred(p)->user->processes);
 	rcu_read_unlock();
 
-	proc_flush_task(p);
+	if (!livedump_task_is_clone(p))
+		/* livedump clones share the pid, so don't mess with proc.  */
+		proc_flush_task(p);
 
 	write_lock_irq(&tasklist_lock);
 	ptrace_release_task(p);
@@ -679,6 +684,9 @@ static void exit_notify(struct task_struct *tsk, int group_dead)
 				!ptrace_reparented(tsk) ?
 			tsk->exit_signal : SIGCHLD;
 		autoreap = do_notify_parent(tsk, sig);
+	} else if (task_in_livedump(tsk)) {
+		/* Always autoreap livedumped threads. */
+		autoreap = true;
 	} else if (thread_group_leader(tsk)) {
 		autoreap = thread_group_empty(tsk) &&
 			do_notify_parent(tsk, tsk->exit_signal);
@@ -731,6 +739,7 @@ void __noreturn do_exit(long code)
 	int group_dead;
 	TASKS_RCU(int tasks_rcu_i);
 
+	livedump_maybe_wait_clone_done(tsk);
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);
 
@@ -910,7 +919,7 @@ do_group_exit(int exit_code)
 	struct signal_struct *sig = current->signal;
 
 	BUG_ON(exit_code & 0x80); /* core dumps don't get here */
-
+	livedump_maybe_wait_clone_done(current);
 	if (signal_group_exit(sig))
 		exit_code = sig->group_exit_code;
 	else if (!thread_group_empty(current)) {

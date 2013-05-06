@@ -37,6 +37,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/signal.h>
+#include <linux/livedump.h>
 
 #include <asm/param.h>
 #include <asm/uaccess.h>
@@ -979,6 +980,9 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 
 	assert_spin_locked(&t->sighand->siglock);
 
+	if (!livedump_signal_send_ok(sig, t))
+		return 0;
+
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t,
 			from_ancestor_ns || (info == SEND_SIG_FORCED)))
@@ -1125,7 +1129,7 @@ __group_send_sig_info(int sig, struct siginfo *info, struct task_struct *p)
 	return send_signal(sig, info, p, 1);
 }
 
-int
+static int
 specific_send_sig_info(int sig, struct siginfo *info, struct task_struct *t)
 {
 	return send_signal(sig, info, t, 0);
@@ -2208,6 +2212,14 @@ relock:
 				continue;
 		}
 
+		if (signr == SIGKILL && task_in_livedump(current)
+		    && !livedump_task_is_clone_child(current)) {
+			spin_unlock_irq(&sighand->siglock);
+			livedump_handle_signal(&ksig->info);
+			signr = 0;
+			goto out;
+		}
+
 		ka = &sighand->action[signr-1];
 
 		/* Trace actually delivered signals. */
@@ -2309,6 +2321,7 @@ relock:
 	}
 	spin_unlock_irq(&sighand->siglock);
 
+ out:
 	ksig->sig = signr;
 	return ksig->sig > 0;
 }
