@@ -389,7 +389,18 @@ EXPORT_SYMBOL_GPL(find_vpid);
 void attach_pid(struct task_struct *task, enum pid_type type)
 {
 	struct pid_link *link = &task->pids[type];
-	hlist_add_head_rcu(&link->node, &link->pid->tasks[type]);
+#ifdef CONFIG_LIVEDUMP
+	struct hlist_node *first;
+
+	/* Livedumped clone and it's origin shares pid. Since clone
+	   arrives later, adding it after origin prevents pid_task()
+	   from returning pointer to clone instead of origin. */
+	if ((type == PIDTYPE_PID) &&
+	    (first = rcu_dereference(link->pid->tasks[type].first)))
+		hlist_add_behind_rcu(&link->node, first);
+	else
+#endif
+		hlist_add_head_rcu(&link->node, &link->pid->tasks[type]);
 }
 
 static void __change_pid(struct task_struct *task, enum pid_type type,
