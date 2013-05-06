@@ -552,6 +552,40 @@ ppc_swapcontext:
 	b	sys_swapcontext
 
 /*
+ * Live dumping calls copy_proces from ptrace and may also do so from
+ * exit/exit_group, therefore full register set is required for them too.
+ */
+	.globl	ppc_ptrace
+ppc_ptrace:
+#ifdef CONFIG_LIVEDUMP
+	SAVE_NVGPRS(r1)
+	lwz	r0,_TRAP(r1)
+	rlwinm	r0,r0,0,0,30
+	stw	r0,_TRAP(r1)
+#endif
+	b	sys_ptrace
+
+	.globl	ppc_exit_group
+ppc_exit_group:
+#ifdef CONFIG_LIVEDUMP
+	SAVE_NVGPRS(r1)
+	lwz	r0,_TRAP(r1)
+	rlwinm	r0,r0,0,0,30
+	stw	r0,_TRAP(r1)
+#endif
+	b	sys_exit_group
+
+	.globl	ppc_exit
+ppc_exit:
+#ifdef CONFIG_LIVEDUMP
+	SAVE_NVGPRS(r1)
+	lwz	r0,_TRAP(r1)
+	rlwinm	r0,r0,0,0,30
+	stw	r0,_TRAP(r1)
+#endif
+	b	sys_exit
+
+/*
  * Top-level page fault handling.
  * This is in assembler because if do_page_fault tells us that
  * it is a bad kernel page fault, we want to save the non-volatile
