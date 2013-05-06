@@ -91,6 +91,7 @@
 #include <linux/kcov.h>
 #include <linux/livepatch.h>
 #include <linux/thread_info.h>
+#include <linux/livedump.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -1918,6 +1919,8 @@ __latent_entropy struct task_struct *copy_process(
 #endif
 	clear_all_latency_tracing(p);
 
+	livedump_set_task_dump(p, NULL);
+
 	/* ok, now we should be set up.. */
 	p->pid = pid_nr(pid);
 	if (clone_flags & CLONE_THREAD) {
@@ -1984,6 +1987,10 @@ __latent_entropy struct task_struct *copy_process(
 		retval = -ENOMEM;
 		goto bad_fork_cancel_cgroup;
 	}
+
+	retval = livedump_check_tsk_copy(p, clone_flags);
+	if (retval)
+		goto bad_fork_cancel_cgroup;
 
 	/* Let kill terminate clone/fork in the middle */
 	if (fatal_signal_pending(current)) {
@@ -2147,6 +2154,11 @@ long _do_fork(unsigned long clone_flags,
 	struct task_struct *p;
 	int trace = 0;
 	long nr;
+
+#ifdef CONFIG_LIVEDUMP
+	if (clone_flags & CLONE_LIVEDUMP)
+		return -EINVAL;
+#endif
 
 	/*
 	 * Determine whether and which event to report to ptracer.  When
