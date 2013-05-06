@@ -2093,7 +2093,7 @@ static int umh_pipe_setup(struct subprocess_info *info, struct cred *new)
 	return 0;
 }
 
-void do_coredump(long signr, int exit_code, struct pt_regs *regs)
+int do_coredump(long signr, int exit_code, struct pt_regs *regs)
 {
 	struct core_state core_state;
 	struct core_name cn;
@@ -2277,7 +2277,7 @@ fail_corename:
 fail_creds:
 	put_cred(cred);
 fail:
-	return;
+	return retval;
 }
 
 /*

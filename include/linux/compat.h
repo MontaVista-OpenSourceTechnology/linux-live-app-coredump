@@ -366,6 +366,18 @@ extern long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 asmlinkage long compat_sys_ptrace(compat_long_t request, compat_long_t pid,
 				  compat_long_t addr, compat_long_t data);
 
+#ifdef CONFIG_LIVEDUMP
+struct compat_livedump_param {
+	compat_int_t	sched_nice;
+	compat_int_t	io_prio;
+	compat_int_t	oom_adj;
+	compat_ulong_t	core_limit;
+};
+
+extern long compat_ptrace_livedump(struct task_struct *tsk,
+		struct compat_livedump_param __user *cparam);
+#endif
+
 /*
  * epoll (fs/eventpoll.c) compat bits follow ...
  */

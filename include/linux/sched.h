@@ -9,6 +9,7 @@
 #define CLONE_FS	0x00000200	/* set if fs info shared between processes */
 #define CLONE_FILES	0x00000400	/* set if open files shared between processes */
 #define CLONE_SIGHAND	0x00000800	/* set if signal handlers and blocked signals shared */
+#define CLONE_LIVEDUMP	0x00001000	/* set if cloned for a live dump */
 #define CLONE_PTRACE	0x00002000	/* set if we want to let tracing continue on the child too */
 #define CLONE_VFORK	0x00004000	/* set if the parent wants the child to wake it up on mm_release */
 #define CLONE_PARENT	0x00008000	/* set if we want to have the same parent as the cloner */
@@ -94,6 +95,9 @@ struct sched_param {
 
 #include <asm/processor.h>
 
+#ifdef CONFIG_LIVEDUMP
+struct livedump_context;
+#endif
 struct exec_domain;
 struct futex_pi_state;
 struct robust_list_head;
@@ -1236,6 +1240,7 @@ struct task_struct {
 	void *stack;
 	atomic_t usage;
 	unsigned int flags;	/* per process flags, defined below */
+	unsigned int extra_flags;
 	unsigned int ptrace;
 
 #ifdef CONFIG_SMP
@@ -1589,6 +1594,10 @@ struct task_struct {
 #ifdef CONFIG_UPROBES
 	struct uprobe_task *utask;
 #endif
+#ifdef CONFIG_LIVEDUMP
+	/* livedump data */
+	struct livedump_context *dump;
+#endif
 };
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
@@ -1803,6 +1812,9 @@ extern void thread_group_times(struct task_struct *p, cputime_t *ut, cputime_t *
 #define PF_MEMPOLICY	0x10000000	/* Non-default NUMA mempolicy */
 #define PF_MUTEX_TESTER	0x20000000	/* Thread belongs to the rt mutex tester */
 #define PF_FREEZER_SKIP	0x40000000	/* Freezer should not count it as freezable */
+
+/* Flags in the extra_flags field */
+#define PFE_LIVEDUMP	0x00001000	/* doing live dump */
 
 /*
  * Only the _current_ task can read/write to tsk->flags, but other
@@ -2324,6 +2336,9 @@ extern int do_execve(const char *,
 		     const char __user * const __user *,
 		     const char __user * const __user *, struct pt_regs *);
 extern long do_fork(unsigned long, unsigned long, struct pt_regs *, unsigned long, int __user *, int __user *);
+extern struct task_struct *copy_process(unsigned long, unsigned long,
+					struct pt_regs *, unsigned long,
+					int __user *, struct pid *, int);
 struct task_struct *fork_idle(int);
 
 extern void set_task_comm(struct task_struct *tsk, char *from);
