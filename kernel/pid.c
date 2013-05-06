@@ -39,6 +39,7 @@
 #include <linux/proc_ns.h>
 #include <linux/proc_fs.h>
 #include <linux/sched/task.h>
+#include <linux/livedump.h>
 
 #define pid_hashfn(nr, ns)	\
 	hash_long((unsigned long)nr + (unsigned long)ns, pidhash_shift)
@@ -435,13 +436,14 @@ struct task_struct *pid_task(struct pid *pid, enum pid_type type)
 {
 	struct task_struct *result = NULL;
 	if (pid) {
-		struct hlist_node *first;
-		first = rcu_dereference_check(hlist_first_rcu(&pid->tasks[type]),
-					      lockdep_tasklist_lock_is_held());
-		if (first)
-			result = hlist_entry(first, struct task_struct, pids[(type)].node);
+		hlist_for_each_entry_rcu(result, &pid->tasks[type],
+					 pids[type].node) {
+			/* Livedump tasks should be invisible. */
+			if (!livedump_task_is_clone(result))
+				return result;
+		}
 	}
-	return result;
+	return NULL;
 }
 EXPORT_SYMBOL(pid_task);
 

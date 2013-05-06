@@ -36,6 +36,9 @@ struct cfs_rq;
 struct fs_struct;
 struct futex_pi_state;
 struct io_context;
+#ifdef CONFIG_LIVEDUMP
+struct livedump_context;
+#endif
 struct mempolicy;
 struct nameidata;
 struct nsproxy;
@@ -1041,6 +1044,9 @@ struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/* A live task holds one reference: */
 	atomic_t			stack_refcount;
+#endif
+#ifdef CONFIG_LIVEDUMP
+	struct livedump_context		*livedump;
 #endif
 	/* CPU-specific state of this task: */
 	struct thread_struct		thread;
