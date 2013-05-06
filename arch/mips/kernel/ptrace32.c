@@ -47,7 +47,14 @@ long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 	int ret;
 
 	switch (request) {
-
+	case PTRACE_LIVEDUMP:
+#ifdef CONFIG_LIVEDUMP
+		ret = compat_ptrace_livedump(child,
+		      (struct compat_livedump_param __user *)(long)cdata);
+#else
+		ret = -ENOSYS;
+#endif /* CONFIG_LIVEDUMP */
+		break;
 	/*
 	 * Read 4 bytes of the other process' storage
 	 *  data is a pointer specifying where the user wants the
