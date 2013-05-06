@@ -126,6 +126,9 @@ struct sched_attr {
 	u64 sched_period;
 };
 
+#ifdef CONFIG_LIVEDUMP
+struct livedump_context;
+#endif
 struct futex_pi_state;
 struct robust_list_head;
 struct bio_list;
@@ -1922,6 +1925,9 @@ struct task_struct {
 	int pagefault_disabled;
 #ifdef CONFIG_MMU
 	struct task_struct *oom_reaper_list;
+#endif
+#ifdef CONFIG_LIVEDUMP
+	struct livedump_context *livedump;
 #endif
 /* CPU-specific state of this task */
 	struct thread_struct thread;
