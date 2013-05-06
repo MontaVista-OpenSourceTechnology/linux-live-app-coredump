@@ -63,6 +63,7 @@
 #include <linux/random.h>
 #include <linux/rcuwait.h>
 #include <linux/compat.h>
+#include <linux/livedump.h>
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
@@ -100,6 +101,8 @@ static void __exit_signal(struct task_struct *tsk)
 	sighand = rcu_dereference_check(tsk->sighand,
 					lockdep_tasklist_lock_is_held());
 	spin_lock(&sighand->siglock);
+
+	livedump_handle_exit(tsk);
 
 #ifdef CONFIG_POSIX_TIMERS
 	posix_cpu_timers_exit(tsk);
@@ -199,7 +202,9 @@ repeat:
 	atomic_dec(&__task_cred(p)->user->processes);
 	rcu_read_unlock();
 
-	proc_flush_task(p);
+	if (!livedump_task_is_clone(p))
+		/* livedump clones don't set up proc. */
+		proc_flush_task(p);
 	cgroup_release(p);
 
 	write_lock_irq(&tasklist_lock);
@@ -661,6 +666,9 @@ static void exit_notify(struct task_struct *tsk, int group_dead)
 				!ptrace_reparented(tsk) ?
 			tsk->exit_signal : SIGCHLD;
 		autoreap = do_notify_parent(tsk, sig);
+	} else if (livedump_task_is_clone_child(tsk)) {
+		/* Always autoreap livedumped cloned threads. */
+		autoreap = true;
 	} else if (thread_group_leader(tsk)) {
 		autoreap = thread_group_empty(tsk) &&
 			do_notify_parent(tsk, tsk->exit_signal);
@@ -878,7 +886,6 @@ do_group_exit(int exit_code)
 	struct signal_struct *sig = current->signal;
 
 	BUG_ON(exit_code & 0x80); /* core dumps don't get here */
-
 	if (signal_group_exit(sig))
 		exit_code = sig->group_exit_code;
 	else if (!thread_group_empty(current)) {
