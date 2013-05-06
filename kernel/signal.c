@@ -44,6 +44,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/signal.h>
+#include <linux/livedump.h>
 
 #include <asm/param.h>
 #include <linux/uaccess.h>
@@ -142,7 +143,8 @@ static int recalc_sigpending_tsk(struct task_struct *t)
 {
 	if ((t->jobctl & JOBCTL_PENDING_MASK) ||
 	    PENDING(&t->pending, &t->blocked) ||
-	    PENDING(&t->signal->shared_pending, &t->blocked)) {
+	    PENDING(&t->signal->shared_pending, &t->blocked) ||
+	    is_livedump_sigpending(t)) {
 		set_tsk_thread_flag(t, TIF_SIGPENDING);
 		return 1;
 	}
@@ -1006,6 +1008,9 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 	int ret = 0, result;
 
 	assert_spin_locked(&t->sighand->siglock);
+
+	if (!livedump_check_signal_send(sig, t))
+		return 0;
 
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t,
@@ -2309,6 +2314,14 @@ int get_signal(struct ksignal *ksig)
 
 relock:
 	spin_lock_irq(&sighand->siglock);
+
+	if (is_livedump_sigpending(current)) {
+		clear_livedump_sigpending(current);
+		spin_unlock_irq(&sighand->siglock);
+		livedump_handle_signal(&ksig->info);
+		spin_lock_irq(&sighand->siglock);
+	}
+
 	/*
 	 * Every stopped thread goes here after wakeup. Check to see if
 	 * we should notify the parent, prepare_signal(SIGCONT) encodes
@@ -2564,6 +2577,8 @@ void exit_signals(struct task_struct *tsk)
 	 * see wants_signal(), do_signal_stop().
 	 */
 	tsk->flags |= PF_EXITING;
+
+	livedump_handle_exit(tsk);
 
 	cgroup_threadgroup_change_end(tsk);
 
