@@ -53,6 +53,7 @@
 #include <linux/oom.h>
 #include <linux/writeback.h>
 #include <linux/shm.h>
+#include <linux/livedump.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -604,6 +605,11 @@ static void exit_notify(struct task_struct *tsk, int group_dead)
 				!ptrace_reparented(tsk) ?
 			tsk->exit_signal : SIGCHLD;
 		autoreap = do_notify_parent(tsk, sig);
+#ifdef CONFIG_LIVEDUMP
+	} else if (tsk->dump) {
+		/* Always autoreap livedumped threads. */
+		autoreap = true;
+#endif
 	} else if (thread_group_leader(tsk)) {
 		autoreap = thread_group_empty(tsk) &&
 			do_notify_parent(tsk, tsk->exit_signal);
@@ -656,6 +662,9 @@ void do_exit(long code)
 	int group_dead;
 	TASKS_RCU(int tasks_rcu_i);
 
+#ifdef CONFIG_LIVEDUMP
+	livedump_maybe_wait_dump(tsk);
+#endif
 	profile_task_exit(tsk);
 
 	WARN_ON(blk_needs_flush_plug(tsk));
@@ -774,6 +783,27 @@ void do_exit(long code)
 	if (unlikely(current->pi_state_cache))
 		kfree(current->pi_state_cache);
 #endif
+#ifdef CONFIG_LIVEDUMP
+	if (unlikely(tsk->dump)) {
+		if (in_livedump(tsk, COPY_THREADS)) {
+			/*
+			 * If livedumping and in COPY_THREADS state,
+			 * that means this thread is expected to clone
+			 * itself.  But at this point, it doesn't
+			 * matter, so just pretend like it was never
+			 * requested.
+			 */
+			if (atomic_dec_and_test(&tsk->dump->nr_clone_remains)){
+				/* All threads are cloned, or at least
+				 * have tried to clone. */
+				livedump_stage(tsk->dump, PERFORM_DUMP);
+				livedump_request(tsk->dump->leader);
+			}
+		}
+		/* Free the dump variable if necessary. */
+		put_dump(tsk->dump);
+	}
+#endif /* CONFIG_LIVEDUMP */
 	/*
 	 * Make sure we are holding no locks:
 	 */
@@ -853,7 +883,9 @@ do_group_exit(int exit_code)
 	struct signal_struct *sig = current->signal;
 
 	BUG_ON(exit_code & 0x80); /* core dumps don't get here */
-
+#ifdef CONFIG_LIVEDUMP
+	livedump_maybe_wait_dump(current);
+#endif
 	if (signal_group_exit(sig))
 		exit_code = sig->group_exit_code;
 	else if (!thread_group_empty(current)) {
