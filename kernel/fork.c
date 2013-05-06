@@ -98,6 +98,7 @@
 #include <linux/io_uring.h>
 #include <linux/bpf.h>
 #include <linux/sched/mm.h>
+#include <linux/livedump.h>
 
 #include <asm/pgalloc.h>
 #include <linux/uaccess.h>
@@ -2020,8 +2021,10 @@ __latent_entropy struct task_struct *copy_process(
 	/*
 	 * If the new process will be in a different pid or user namespace
 	 * do not allow it to share a thread group with the forking task.
+	 * Livedump is a special case, it handles all the setup itself.
 	 */
-	if (clone_flags & CLONE_THREAD) {
+	if (clone_flags & CLONE_THREAD &&
+			!(args->internal_flags & CLONE_INT_LIVEDUMP)) {
 		if ((clone_flags & (CLONE_NEWUSER | CLONE_NEWPID)) ||
 		    (task_active_pid_ns(current) != nsp->pid_ns_for_children))
 			return ERR_PTR(-EINVAL);
@@ -2306,6 +2309,8 @@ __latent_entropy struct task_struct *copy_process(
 #endif
 	clear_tsk_latency_tracing(p);
 
+	livedump_set_task_dump(p, NULL);
+
 	/* ok, now we should be set up.. */
 	p->pid = pid_nr(pid);
 	if (clone_flags & CLONE_THREAD) {
@@ -2403,6 +2408,10 @@ __latent_entropy struct task_struct *copy_process(
 		retval = -ENOMEM;
 		goto bad_fork_cancel_cgroup;
 	}
+
+	retval = livedump_check_tsk_copy(p, clone_flags, args->internal_flags);
+	if (retval)
+		goto bad_fork_cancel_cgroup;
 
 	/* Let kill terminate clone/fork in the middle */
 	if (fatal_signal_pending(current)) {
