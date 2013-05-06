@@ -25,6 +25,7 @@
 #include <linux/profile.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
+#include <linux/freezer.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -2830,6 +2831,13 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 
 	if (current->set_child_tid)
 		put_user(task_pid_vnr(current), current->set_child_tid);
+
+	/*
+	 * If a task starts in stopped state, that means it's a livedump
+	 * clone that should never run.  So just stop here.
+	 */
+	if (current->state == TASK_STOPPED)
+		freezable_schedule();
 }
 
 /*
