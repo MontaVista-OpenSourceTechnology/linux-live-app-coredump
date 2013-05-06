@@ -39,6 +39,9 @@ struct cfs_rq;
 struct fs_struct;
 struct futex_pi_state;
 struct io_context;
+#ifdef CONFIG_LIVEDUMP
+struct livedump_context;
+#endif
 struct mempolicy;
 struct nameidata;
 struct nsproxy;
@@ -1195,6 +1198,10 @@ struct task_struct {
 #ifdef CONFIG_SECURITY
 	/* Used by LSM modules for access restriction: */
 	void				*security;
+#endif
+#ifdef CONFIG_LIVEDUMP
+	struct livedump_context		*livedump;
+	bool				livedump_sigpending;
 #endif
 
 #ifdef CONFIG_GCC_PLUGIN_STACKLEAK
