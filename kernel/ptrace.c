@@ -27,6 +27,7 @@
 #include <linux/cn_proc.h>
 #include <linux/compat.h>
 #include <linux/livedump.h>
+#include <linux/kthread.h>
 #include <linux/ioprio.h>
 #include <linux/oom.h>
 
@@ -1127,6 +1128,8 @@ long ptrace_livedump(struct task_struct *tsk,
 
 	/* We may start the dump. */
 	if (unlikely(current->group_leader == leader)) {
+		struct task_struct *dumper;
+
 		/*
 		 * Current is a member of the thread group lead by the
 		 * dumped task.  Since the task can't dump itself nor
@@ -1134,8 +1137,12 @@ long ptrace_livedump(struct task_struct *tsk,
 		 * it.
 		 */
 		init_completion(&dump->thread_exit);
-		status = kernel_thread(livedump_dumper_thread, dump, 0);
-		if (status > 0) {
+		init_completion(&dump->thread_exit);
+		dumper = kthread_run(livedump_dumper_thread, dump, "dump_%s",
+				     current->comm);
+		if (IS_ERR(dumper)) {
+			status = PTR_ERR(dumper);
+		} else {
 			sigset_t set;
 
 			livedump_block_signals(&set);
