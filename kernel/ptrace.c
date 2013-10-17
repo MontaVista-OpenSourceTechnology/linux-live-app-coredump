@@ -1137,7 +1137,6 @@ long ptrace_livedump(struct task_struct *tsk,
 		 * it.
 		 */
 		init_completion(&dump->thread_exit);
-		init_completion(&dump->thread_exit);
 		dumper = kthread_run(livedump_dumper_thread, dump, "dump_%s",
 				     current->comm);
 		if (IS_ERR(dumper)) {
