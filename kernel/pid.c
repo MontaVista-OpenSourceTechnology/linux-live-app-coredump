@@ -391,7 +391,7 @@ void attach_pid(struct task_struct *task, enum pid_type type)
 	   from returning pointer to clone instead of origin. */
 	if ((type == PIDTYPE_PID) &&
 	    (first = rcu_dereference(link->pid->tasks[type].first)))
-		hlist_add_after_rcu(first, &link->node);
+		hlist_add_behind_rcu(&link->node, first);
 	else
 #endif
 		hlist_add_head_rcu(&link->node, &link->pid->tasks[type]);
