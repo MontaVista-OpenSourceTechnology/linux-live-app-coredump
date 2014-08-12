@@ -1141,6 +1141,7 @@ long ptrace_livedump(struct task_struct *tsk,
 
 			livedump_block_signals(&set);
 			do {
+				struct ksignal ks;
 				/*
 				 * Wait for dumper thread. This wait
 				 * will be interrupted by the SIGKILL
@@ -1152,7 +1153,7 @@ long ptrace_livedump(struct task_struct *tsk,
 				 * Handling signal gives dumping stuff
 				 * a chance to do it's job.
 				 */
-				livedump_process_signal();
+				get_signal(&ks);
 			} while (1);
 			status = livedump_status(dump);
 			livedump_unblock_signals(&set);

@@ -154,14 +154,6 @@ static inline void livedump_unblock_signals(sigset_t *restoreset)
 	spin_unlock_irq(&current->sighand->siglock);
 }
 
-static inline void livedump_process_signal(void)
-{
-	siginfo_t info;
-	struct k_sigaction ka;
-
-	get_signal_to_deliver(&info, &ka, task_pt_regs(current), NULL);
-}
-
 static inline void livedump_maybe_wait_dump(struct task_struct *tsk) {
 	struct task_struct *leader = tsk->group_leader;
 
@@ -173,8 +165,10 @@ static inline void livedump_maybe_wait_dump(struct task_struct *tsk) {
 		   process SIGKILL to clone current thread. */
 		livedump_block_signals(&set);
 		do {
-			if (schedule_timeout_interruptible(1))
-				livedump_process_signal();
+			if (schedule_timeout_interruptible(1)) {
+				struct ksignal ks;
+				get_signal(&ks);
+			}
 			barrier();
 		} while (leader->extra_flags & PFE_LIVEDUMP);
 		livedump_unblock_signals(&set);

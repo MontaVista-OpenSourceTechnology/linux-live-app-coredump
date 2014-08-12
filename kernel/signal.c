@@ -2285,7 +2285,7 @@ relock:
 			} else if (in_livedump(current, PERFORM_DUMP) &&
 				   thread_group_leader(current)) {
 				spin_unlock_irq(&sighand->siglock);
-				livedump_perform_dump(info);
+				livedump_perform_dump(&ksig->info);
 			}
 		}
 #endif /* CONFIG_LIVEDUMP */
