@@ -374,6 +374,13 @@ _GLOBAL(ppc_ptrace)
 	bl	.sys_ptrace
 	b	syscall_exit
 
+_GLOBAL(compat_ppc_ptrace)
+#ifdef CONFIG_LIVEDUMP
+	bl	.save_nvgprs
+#endif
+	bl	.compat_sys_ptrace
+	b	.Lsyscall_exit
+
 _GLOBAL(ppc_exit_group)
 #ifdef CONFIG_LIVEDUMP
 	bl	.save_nvgprs
