@@ -20,6 +20,7 @@
 #define SYSCALL(func)		.llong	.sys_##func,.sys_##func
 #define COMPAT_SYS(func)	.llong	.sys_##func,.compat_sys_##func
 #define PPC_SYS(func)		.llong	.ppc_##func,.ppc_##func
+#define COMPAT_PPC(func)	.llong	.ppc_##func,.compat_ppc_##func
 #define OLDSYS(func)		.llong	.sys_ni_syscall,.sys_ni_syscall
 #define SYS32ONLY(func)		.llong	.sys_ni_syscall,.compat_sys_##func
 #define SYSX(f, f3264, f32)	.llong	.f,.f3264
@@ -27,6 +28,7 @@
 #define SYSCALL(func)		.long	sys_##func
 #define COMPAT_SYS(func)	.long	sys_##func
 #define PPC_SYS(func)		.long	ppc_##func
+#define COMPAT_PPC(func)	.long	ppc_##func
 #define OLDSYS(func)		.long	sys_##func
 #define SYS32ONLY(func)		.long	sys_##func
 #define SYSX(f, f3264, f32)	.long	f32
