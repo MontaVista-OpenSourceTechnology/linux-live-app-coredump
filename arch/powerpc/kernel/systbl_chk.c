@@ -18,6 +18,7 @@
 #define SYSCALL(func)		__NR_##func
 #define COMPAT_SYS(func)	__NR_##func
 #define PPC_SYS(func)		__NR_##func
+#define COMPAT_PPC(func)	__NR_##func
 #ifdef CONFIG_PPC64
 #define OLDSYS(func)		-1
 #define SYS32ONLY(func)		-1
