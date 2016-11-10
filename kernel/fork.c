@@ -1296,14 +1296,14 @@ init_task_pid(struct task_struct *task, enum pid_type type, struct pid *pid)
  * parts of the process environment (as per the clone
  * flags). The actual kick-off is left to the caller.
  */
-static struct task_struct *copy_process(unsigned long clone_flags,
-					unsigned long stack_start,
-					unsigned long stack_size,
-					int __user *child_tidptr,
-					struct pid *pid,
-					int trace,
-					unsigned long tls,
-					int node)
+struct task_struct *copy_process(unsigned long clone_flags,
+				 unsigned long stack_start,
+				 unsigned long stack_size,
+				 int __user *child_tidptr,
+				 struct pid *pid,
+				 int trace,
+				 unsigned long tls,
+				 int node)
 {
 	int retval;
 	struct task_struct *p;
