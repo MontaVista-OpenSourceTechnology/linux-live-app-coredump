@@ -534,6 +534,18 @@ int __compat_save_altstack(compat_stack_t __user *, unsigned long);
 	unsafe_put_user(t->sas_ss_size, &__uss->ss_size, label); \
 } while (0);
 
+#ifdef CONFIG_LIVEDUMP
+struct compat_livedump_param {
+	compat_int_t	sched_nice;
+	compat_int_t	io_prio;
+	compat_int_t	oom_adj;
+	compat_ulong_t	core_limit;
+};
+
+extern long compat_ptrace_livedump(struct task_struct *tsk,
+		struct compat_livedump_param __user *cparam);
+#endif
+
 /*
  * These syscall function prototypes are kept in the same order as
  * include/uapi/asm-generic/unistd.h. Deprecated or obsolete system calls
