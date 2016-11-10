@@ -28,9 +28,9 @@ int dump_user_range(struct coredump_params *cprm, unsigned long start,
 int dump_vma_snapshot(struct coredump_params *cprm, int *vma_count,
 		      struct core_vma_metadata **vma_meta,
 		      size_t *vma_data_size_ptr);
-extern void do_coredump(const kernel_siginfo_t *siginfo);
+extern int do_coredump(const kernel_siginfo_t *siginfo);
 #else
-static inline void do_coredump(const kernel_siginfo_t *siginfo) {}
+static inline int do_coredump(const kernel_siginfo_t *siginfo) { return 0; }
 #endif
 
 #if defined(CONFIG_COREDUMP) && defined(CONFIG_SYSCTL)
