@@ -1086,7 +1086,7 @@ static inline bool coredump_skip(const struct coredump_params *cprm,
 	return false;
 }
 
-void vfs_coredump(const kernel_siginfo_t *siginfo)
+int vfs_coredump(const kernel_siginfo_t *siginfo)
 {
 	struct cred *cred __free(put_cred) = NULL;
 	size_t *argv __free(kfree) = NULL;
@@ -1095,6 +1095,7 @@ void vfs_coredump(const kernel_siginfo_t *siginfo)
 	struct mm_struct *mm = current->mm;
 	struct linux_binfmt *binfmt = mm->binfmt;
 	const struct cred *old_cred;
+	int retval;
 	int argc = 0;
 	struct coredump_params cprm = {
 		.siginfo = siginfo,
@@ -1112,11 +1113,11 @@ void vfs_coredump(const kernel_siginfo_t *siginfo)
 	audit_core_dumps(siginfo->si_signo);
 
 	if (coredump_skip(&cprm, binfmt))
-		return;
+		return 0;
 
 	cred = prepare_creds();
 	if (!cred)
-		return;
+		return -ENOMEM;
 	/*
 	 * We cannot trust fsuid as being the "true" uid of the process
 	 * nor do we know its entire history. We only know it was tainted
@@ -1126,8 +1127,9 @@ void vfs_coredump(const kernel_siginfo_t *siginfo)
 	if (coredump_force_suid_safe(&cprm))
 		cred->fsuid = GLOBAL_ROOT_UID;
 
-	if (coredump_wait(siginfo->si_signo, &core_state) < 0)
-		return;
+	retval = coredump_wait(siginfo->si_signo, &core_state);
+	if (retval < 0)
+		return retval;
 
 	old_cred = override_creds(cred);
 
@@ -1197,7 +1199,7 @@ void vfs_coredump(const kernel_siginfo_t *siginfo)
 close_fail:
 	coredump_cleanup(&cn, &cprm);
 	revert_creds(old_cred);
-	return;
+	return 0;
 }
 
 /*
