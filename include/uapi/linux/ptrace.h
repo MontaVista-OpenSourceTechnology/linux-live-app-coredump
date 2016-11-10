@@ -29,6 +29,7 @@
 #define PTRACE_GETEVENTMSG	0x4201
 #define PTRACE_GETSIGINFO	0x4202
 #define PTRACE_SETSIGINFO	0x4203
+#define PTRACE_LIVEDUMP		0x4221
 
 /*
  * Generic ptrace interface that exports the architecture specific regsets
