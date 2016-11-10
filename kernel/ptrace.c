@@ -33,6 +33,7 @@
 #include <linux/sched/signal.h>
 #include <linux/minmax.h>
 #include <linux/syscall_user_dispatch.h>
+#include <linux/livedump.h>
 
 #include <asm/syscall.h>	/* for syscall_get_* */
 
@@ -1275,6 +1276,36 @@ int ptrace_request(struct task_struct *child, long request,
 	return ret;
 }
 
+#ifdef CONFIG_LIVEDUMP
+long ptrace_livedump(struct task_struct *tsk,
+		     struct livedump_param *param)
+{
+	int ret = 0;
+	struct task_struct *leader;
+
+	rcu_read_lock();
+	leader = tsk->group_leader;
+	if (WARN_ON(!leader))
+		ret = -EIO;
+	else
+		get_task_struct(leader);
+	rcu_read_unlock();
+
+	if (ret)
+		return ret;
+
+	/* FIXME - better security check here ? */
+	if (!ptrace_check_attach(leader, 0))
+		ret = -EPERM;
+	else
+		ret = do_livedump(leader, param);
+
+	put_task_struct(leader);
+
+	return ret;
+}
+#endif /* CONFIG_LIVEDUMP */
+
 SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
 		unsigned long, data)
 {
@@ -1290,6 +1321,25 @@ SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
 	if (!child) {
 		ret = -ESRCH;
 		goto out;
+	}
+
+	if (request == PTRACE_LIVEDUMP) {
+#ifdef CONFIG_LIVEDUMP
+		struct livedump_param ldparam;
+
+		init_livedump_param(&ldparam);
+		if (data) {
+			if (copy_from_user(&ldparam, (void __user *) data,
+					   sizeof(ldparam))) {
+				ret = -EFAULT;
+				goto out_put_task_struct;
+			}
+		}
+		ret = ptrace_livedump(child, &ldparam);
+#else
+		ret = -ENOTSUPP;
+#endif
+		goto out_put_task_struct;
 	}
 
 	if (request == PTRACE_ATTACH || request == PTRACE_SEIZE) {
@@ -1335,6 +1385,32 @@ int generic_ptrace_pokedata(struct task_struct *tsk, unsigned long addr,
 }
 
 #if defined CONFIG_COMPAT
+
+#ifdef CONFIG_LIVEDUMP
+struct compat_livedump_param {
+	compat_int_t	sched_nice;
+	compat_int_t	io_prio;
+	compat_int_t	oom_adj;
+	compat_ulong_t	core_limit;
+};
+
+static inline long
+copy_livedump_param_from_user32(struct livedump_param *to,
+				struct compat_livedump_param __user  *from)
+{
+	long err;
+
+	if (!access_ok(from, sizeof(struct compat_livedump_param)))
+		return -EFAULT;
+
+	err = __get_user(to->sched_nice, &from->sched_nice);
+	err |= __get_user(to->io_prio, &from->io_prio);
+	err |= __get_user(to->oom_adj, &from->oom_adj);
+	err |= __get_user(to->core_limit, &from->core_limit);
+
+	return err;
+}
+#endif	/* CONFIG_LIVEDUMP */
 
 int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 			  compat_ulong_t addr, compat_ulong_t data)
@@ -1429,6 +1505,25 @@ COMPAT_SYSCALL_DEFINE4(ptrace, compat_long_t, request, compat_long_t, pid,
 	if (!child) {
 		ret = -ESRCH;
 		goto out;
+	}
+
+	if (request == PTRACE_LIVEDUMP) {
+#ifdef CONFIG_LIVEDUMP
+		struct livedump_param ldparam;
+		void __user *datap = compat_ptr(data);
+
+		init_livedump_param(&ldparam);
+		if (datap) {
+			if (copy_livedump_param_from_user32(&ldparam, datap)) {
+			    ret = -EFAULT;
+			    goto out_put_task_struct;
+			}
+		}
+		ret = ptrace_livedump(child, &ldparam);
+#else
+		ret = -ENOTSUPP;
+#endif
+		goto out_put_task_struct;
 	}
 
 	if (request == PTRACE_ATTACH || request == PTRACE_SEIZE) {
