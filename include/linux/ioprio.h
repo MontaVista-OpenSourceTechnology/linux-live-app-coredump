@@ -89,6 +89,7 @@ static inline int get_current_ioprio(void)
 extern int ioprio_best(unsigned short aprio, unsigned short bprio);
 
 extern int set_task_ioprio(struct task_struct *task, int ioprio);
+extern int get_task_ioprio(struct task_struct *task);
 
 #ifdef CONFIG_BLOCK
 extern int ioprio_check_cap(int ioprio);
