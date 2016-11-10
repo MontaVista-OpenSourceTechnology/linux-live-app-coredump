@@ -76,6 +76,7 @@ static inline int task_nice_ioclass(struct task_struct *task)
 extern int ioprio_best(unsigned short aprio, unsigned short bprio);
 
 extern int set_task_ioprio(struct task_struct *task, int ioprio);
+extern int get_task_ioprio(struct task_struct *task);
 
 #ifdef CONFIG_BLOCK
 extern int ioprio_check_cap(int ioprio);
