@@ -75,6 +75,10 @@ extern void exit_itimers(struct signal_struct *);
 
 extern long _do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *, unsigned long);
 extern long do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *);
+extern struct task_struct *copy_process(unsigned long, unsigned long,
+					unsigned long,
+					int __user *, int __user *,
+					struct pid *, int, unsigned long, int);
 struct task_struct *fork_idle(int);
 struct mm_struct *copy_init_mm(void);
 extern pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags);
