@@ -87,6 +87,7 @@
 #include <linux/slab.h>
 #include <linux/flex_array.h>
 #include <linux/posix-timers.h>
+#include <linux/livedump.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -2841,6 +2842,85 @@ static int proc_pid_personality(struct seq_file *m, struct pid_namespace *ns,
 	return err;
 }
 
+#ifdef CONFIG_LIVEDUMP
+struct livedump_proc_data {
+	char buf[500];
+	int pos;
+	struct task_struct *task;
+};
+
+static int livedump_open(struct inode *inode, struct file *file)
+{
+	struct livedump_proc_data *pdata;
+
+	pdata = kmalloc(sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		return -ENOMEM;
+	pdata->pos = 0;
+	pdata->task = get_proc_task(inode);
+	file->private_data = pdata;
+	return 0;
+}
+
+static ssize_t livedump_write(struct file *file, const char __user *buf,
+			      size_t count, loff_t *ppos)
+{
+	struct livedump_proc_data *pdata = file->private_data;
+	struct livedump_param lparam;
+	int ret;
+	char *curr, *next;
+
+	if (count + pdata->pos > sizeof(pdata->buf))
+		return -EFBIG;
+	if (copy_from_user(pdata->buf + pdata->pos, buf, count))
+		return -EFAULT;
+
+	curr = strchr(pdata->buf, '\n');
+	if (curr) {
+		init_livedump_param(&lparam);
+
+		*curr = '\0';
+		next = pdata->buf;
+		curr = strsep(&next, " \t");
+		for (; curr; curr = strsep(&next, " \t")) {
+			char *parm, *val, *end = "";
+
+			if (!*curr)
+				continue;
+			val = curr;
+			parm = strsep(&val, "=");
+			if (strcmp(parm, "sched_prio") == 0) {
+				lparam.sched_nice = simple_strtol(val, &end, 0);
+			} else if (strcmp(parm, "io_prio") == 0) {
+				lparam.io_prio = simple_strtol(val, &end, 0);
+			} else if (strcmp(parm, "oom_adj") == 0) {
+				lparam.oom_adj = simple_strtol(val, &end, 0);
+			} else if (strcmp(parm, "core_limit") == 0) {
+				lparam.core_limit_set = true;
+				if (strcmp(val, "unlimited") == 0)
+					lparam.core_limit = ~0UL;
+				else
+					lparam.core_limit =
+						simple_strtoul(val, &end, 0);
+			} else
+				return -EINVAL;
+			if (*end)
+				return -EINVAL;
+		}
+
+		ret = do_livedump(pdata->task, &lparam);
+		if (ret < 0)
+			return ret;
+	}
+	return count;
+}
+
+static const struct file_operations proc_livedump_operations = {
+	.open  = livedump_open,
+	.write = livedump_write,
+};
+#endif
+
 /*
  * Thread groups
  */
@@ -2940,6 +3020,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("timers",	  S_IRUGO, proc_timers_operations),
 #endif
 	REG("timerslack_ns", S_IRUGO|S_IWUGO, proc_pid_set_timerslack_ns_operations),
+#ifdef CONFIG_LIVEDUMP
+	REG("livedump",   S_IWUSR, proc_livedump_operations),
+#endif
 };
 
 static int proc_tgid_base_readdir(struct file *file, struct dir_context *ctx)
