@@ -96,6 +96,7 @@
 #include <linux/posix-timers.h>
 #include <linux/time_namespace.h>
 #include <linux/resctrl.h>
+#include <linux/livedump.h>
 #include <trace/events/oom.h>
 #include "internal.h"
 #include "fd.h"
@@ -3145,6 +3146,112 @@ static int proc_stack_depth(struct seq_file *m, struct pid_namespace *ns,
 }
 #endif /* CONFIG_STACKLEAK_METRICS */
 
+#ifdef CONFIG_LIVEDUMP
+struct livedump_proc_data {
+	char buf[500];
+	int pos;
+};
+
+static int livedump_open(struct inode *inode, struct file *file)
+{
+	struct livedump_proc_data *pdata;
+
+	pdata = kmalloc(sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		return -ENOMEM;
+	pdata->pos = 0;
+	file->private_data = pdata;
+	return 0;
+}
+
+static int livedump_release(struct inode *inode, struct file *file)
+{
+	struct livedump_proc_data *pdata = file->private_data;
+
+	kfree(pdata);
+	return 0;
+}
+
+static ssize_t livedump_write(struct file *file, const char __user *buf,
+			      size_t count, loff_t *ppos)
+{
+	struct livedump_proc_data *pdata = file->private_data;
+	struct livedump_param lparam;
+	int ret = 0;
+	char *curr, *next;
+	struct task_struct *tsk;
+
+	if (pdata->pos == -1) /* Only do this once per open. */
+		return count;
+
+	/* Leave one byte at the end for a \0. */
+	if (count + pdata->pos > sizeof(pdata->buf) - 1)
+		return -EFBIG;
+	if (copy_from_user(pdata->buf + pdata->pos, buf, count))
+		return -EFAULT;
+	pdata->pos += count;
+	pdata->buf[pdata->pos] = '\0';
+
+	/* Wait until we get a full line of data. */
+	curr = strchr(pdata->buf, '\n');
+	if (!curr)
+		return count;
+
+	pdata->pos = -1;
+	*curr = '\0';
+
+	/* Now parse the input line for parameters. */
+	init_livedump_param(&lparam);
+	next = pdata->buf;
+	curr = strsep(&next, " \t");
+	for (; curr && !ret; curr = strsep(&next, " \t")) {
+		char *parm, *val;
+
+		if (!*curr)
+			continue;
+		val = curr;
+		parm = strsep(&val, "=");
+		if (strcmp(parm, "sched_prio") == 0) {
+			ret = kstrtoint(val, 0, &lparam.sched_nice);
+		} else if (strcmp(parm, "io_prio") == 0) {
+			ret = kstrtoint(val, 0, &lparam.io_prio);
+		} else if (strcmp(parm, "oom_adj") == 0) {
+			ret = kstrtoint(val, 0, &lparam.oom_adj);
+		} else if (strcmp(parm, "core_limit") == 0) {
+			lparam.core_limit_set = true;
+			if (strcmp(val, "unlimited") == 0)
+				lparam.core_limit = RLIM_INFINITY;
+			else
+				ret = kstrtoul(val, 0, &lparam.core_limit);
+		} else {
+			ret = -EINVAL;
+		}
+	}
+
+	if (ret)
+		return ret;
+
+	tsk = get_proc_task(file_inode(file));
+	if (!tsk)
+		return -ESRCH;
+
+	ret = do_livedump(tsk, &lparam);
+
+	put_task_struct(tsk);
+
+	if (ret < 0)
+		return ret;
+
+	return count;
+}
+
+static const struct file_operations proc_livedump_operations = {
+	.open  = livedump_open,
+	.write = livedump_write,
+	.release = livedump_release,
+};
+#endif /* CONFIG_LIVEDUMP */
+
 /*
  * Thread groups
  */
@@ -3257,6 +3364,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 #endif
 #ifdef CONFIG_PROC_PID_ARCH_STATUS
 	ONE("arch_status", S_IRUGO, proc_pid_arch_status),
+#endif
+#ifdef CONFIG_LIVEDUMP
+	REG("livedump",   0200, proc_livedump_operations),
 #endif
 };
 
