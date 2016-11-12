@@ -289,7 +289,7 @@ out:
 
 void livedump_handle_signal(siginfo_t *info)
 {
-	switch (current->dump->stage) {
+	switch (livedump_stage(current->dump)) {
 	case COPY_THREADS:
 		livedump_clone_thread();
 		break;
@@ -316,7 +316,7 @@ static int livedump_take(struct livedump_context *dump)
 	get_dump(dump);
 	/* Initialize the rest of livedump context. */
 	livedump_set_status(dump, 0);
-	livedump_stage(dump, COPY_THREADS);
+	livedump_set_stage(dump, COPY_THREADS);
 	init_completion(&dump->dump_complete);
 	init_completion(&dump->dump_ready);
 

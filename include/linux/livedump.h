@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <asm/atomic.h>
 #include <asm/siginfo.h>
+#include <asm/barrier.h>
 #include <linux/oom.h>
 #include <linux/ioprio.h>
 #include <linux/sched.h>
@@ -91,13 +92,20 @@ static inline void livedump_set_status(struct livedump_context *dump,
 
 static inline int livedump_status(struct livedump_context *dump)
 {
+	smp_rmb();
 	return dump->status;
 }
 
-static inline void livedump_stage(struct livedump_context *dump,
-				  livedump_stage_t stage)
+static inline void livedump_set_stage(struct livedump_context *dump,
+				      livedump_stage_t stage)
 {
 	smp_store_mb(dump->stage, stage);
+}
+
+static inline livedump_stage_t livedump_stage(struct livedump_context *dump)
+{
+	smp_rmb();
+	return dump->stage;
 }
 
 extern void livedump_ref_done(struct kref *ref);
@@ -142,7 +150,8 @@ static inline int task_in_livedump(struct task_struct *tsk)
 static inline int task_in_livedump_stage(struct task_struct *tsk,
 					 livedump_stage_t check_stage)
 {
-	return task_in_livedump(tsk) ? (tsk->dump->stage == check_stage) : 0;
+	return task_in_livedump(tsk) ?
+		(livedump_stage(tsk->dump) == check_stage) : 0;
 }
 
 static inline int livedump_task_is_clone_child(struct task_struct *tsk)
@@ -249,7 +258,7 @@ static inline void livedump_thread_clone_done(struct task_struct *tsk)
 		 * All threads are cloned, or at least have tried to
 		 * clone.
 		 */
-		livedump_stage(tsk->dump, PERFORM_DUMP);
+		livedump_set_stage(tsk->dump, PERFORM_DUMP);
 		livedump_signal_leader(tsk->dump->dumped_leader);
 	}
 }
@@ -260,7 +269,7 @@ static inline void livedump_thread_clone_done(struct task_struct *tsk)
 static inline void livedump_check_exit(struct task_struct *tsk)
 {
 	if (task_in_livedump(tsk)) {
-		if (tsk->dump->stage == COPY_THREADS) {
+		if (livedump_stage(tsk->dump) == COPY_THREADS) {
 			/*
 			 * If livedumping and in COPY_THREADS state,
 			 * that means this thread is expected to clone
