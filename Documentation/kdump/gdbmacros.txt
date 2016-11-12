@@ -64,14 +64,20 @@ define btthreadstack
 	printf "===================\n"
 	set var $stackp = $pid_task.thread.sp
 	set var $stacksize = sizeof(union thread_union)
+	printf "sp: %lx    ssize: %lx\n", $stackp, $stacksize
 	set var $stack_top = ($stackp & ~($stacksize - 1)) + $stacksize
 	set var $stack_bot = ($stackp & ~($stacksize - 1))
 
-	set $stackp = *((unsigned long *) $stackp)
-	while (($stackp < $stack_top) && ($stackp > $stack_bot))
-		set var $addr = *(((unsigned long *) $stackp) + 1)
-		info symbol $addr
-		set $stackp = *((unsigned long *) $stackp)
+	# set $stackp = *((unsigned long *) $stackp)
+	#printf "Stackb: %lx\n", $stack_bot
+	while ($stackp < $stack_top)
+		set var $d = *((unsigned long *) $stackp)
+		#printf "Trying %lx: %lx\n", $stackp, $d
+		if (($d > $stackp) && ($d < $stack_top))
+			set var $addr = *(((unsigned long *) $stackp) + 1)
+			info symbol $addr
+		end
+		set var $stackp = (((unsigned long *) $stackp) + 1)
 	end
 end
 document btthreadstack
