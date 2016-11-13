@@ -79,7 +79,7 @@ int livedump_setup_clone(struct task_struct *clone, unsigned long clone_flags)
 		clone->sighand = dump->dumped_leader->sighand;
 		__cleanup_sighand(oldsighand);
 
-		clone->dump = get_dump(dump);
+		livedump_set_task_dump(clone, get_dump(dump));
 	}
 
 	/* FIXME - do we need this on every thread or just the leader? */
@@ -133,9 +133,18 @@ static struct task_struct *livedump_clone(unsigned long clone_flags)
  */
 static void livedump_wait(struct livedump_context *dump)
 {
-	livedump_thread_clone_done(current);
+	if (dump->orig_leader != current)
+		/* The leader is cleared when the dump is complete. */
+		livedump_set_task_dump(current, NULL);
+	livedump_thread_clone_done(dump);
 	wait_for_completion(&dump->dump_ready);
-	current->dump = NULL;
+	if (dump->orig_leader == current)
+		/*
+		 * We hold the original leader's dump variable until
+		 * here so that you can't start another dump until
+		 * this is complete.
+		 */
+		livedump_set_task_dump(dump->orig_leader, NULL);
 	put_dump(dump);
 }
 
@@ -174,11 +183,6 @@ static void livedump_clone_thread(void)
 		spin_unlock_irq(&current->sighand->siglock);
 	} else {
 		clone = livedump_clone(CLONE_THREAD | CLONE_SIGHAND | CLONE_VM);
-		/*
-		 * Note that the cloned thread does not have tsk->dump
-		 * set.  It's not necessary, and it would prevent the
-		 * coredump signal from being delivered.
-		 */
 	}
 
 	if (IS_ERR(clone)) {
@@ -219,7 +223,6 @@ static long livedump_copy_context(void)
 	/* MM is copied, we can now let the original threads go. */
 	complete_all(&dump->dump_ready);
 
-	/* FIXME - refcounts on oldmm? */
 	oldmm = p->active_mm;
 	p->mm = p->active_mm = newmm;
 	preempt_disable();
@@ -325,11 +328,13 @@ static int livedump_take(struct livedump_context *dump)
 	wait_for_completion(&dump->dump_ready);
 	status = livedump_status(dump);
 	if (status)
-		return status;
+		goto out;
 
 	wait_for_completion(&dump->dump_complete);
 	status = livedump_status(dump);
+out:
 	put_dump(dump);
+
 	return status;
 }
 

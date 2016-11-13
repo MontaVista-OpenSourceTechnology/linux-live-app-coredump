@@ -1703,9 +1703,8 @@ __latent_entropy struct task_struct *copy_process(
 #endif
 	clear_all_latency_tracing(p);
 
-#ifdef CONFIG_LIVEDUMP
-	p->dump = NULL;
-#endif
+	livedump_set_task_dump(p, NULL);
+
 	/* ok, now we should be set up.. */
 	p->pid = pid_nr(pid);
 	if (clone_flags & CLONE_THREAD) {
