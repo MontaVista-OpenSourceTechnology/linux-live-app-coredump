@@ -167,11 +167,11 @@ static inline int task_in_livedump(struct task_struct *tsk)
 	return __task_in_livedump(livedump_task_dump(tsk));
 }
 
-static inline int task_in_livedump_stage(struct task_struct *tsk,
+static inline int task_in_livedump_stage(struct livedump_context *dump,
 					 livedump_stage_t check_stage)
 {
-	return task_in_livedump(tsk) ?
-		(livedump_stage(tsk->dump) == check_stage) : 0;
+	return __task_in_livedump(dump) ?
+		(livedump_stage(dump) == check_stage) : 0;
 }
 
 static inline int __livedump_task_is_clone_child(struct task_struct *tsk,
@@ -221,8 +221,10 @@ static inline void livedump_wait_for_completion_sig(struct completion *c)
 
 static inline void livedump_maybe_wait_clone_done(struct task_struct *tsk)
 {
-	if (task_in_livedump_stage(tsk, COPY_THREADS))
-		livedump_wait_for_completion_sig(&tsk->dump->dump_ready);
+	struct livedump_context *dump = livedump_task_dump(tsk);
+
+	if (task_in_livedump_stage(dump, COPY_THREADS))
+		livedump_wait_for_completion_sig(&dump->dump_ready);
 }
 
 static inline void __livedump_send_sig(struct task_struct *tsk)
@@ -231,11 +233,12 @@ static inline void __livedump_send_sig(struct task_struct *tsk)
 	signal_wake_up(tsk, 1);
 }
 
-static inline void __livedump_signal_clone(struct task_struct *tsk)
+static inline void __livedump_signal_clone(struct task_struct *tsk,
+					   struct livedump_context *dump)
 {
 	assert_spin_locked(&tsk->sighand->siglock);
-	atomic_inc(&current->dump->nr_clone_remains);
-	livedump_set_task_dump(tsk, get_dump(current->dump));
+	atomic_inc(&dump->nr_clone_remains);
+	livedump_set_task_dump(tsk, get_dump(dump));
 	__livedump_send_sig(tsk);
 }
 
@@ -258,15 +261,16 @@ static inline int livedump_check_to_clone(struct task_struct *tsk,
 					  unsigned long clone_flags)
 {
 	int ret = 0;
+	struct livedump_context *dump = livedump_task_dump(tsk);
 
-	if (task_in_livedump_stage(current, COPY_THREADS) &&
+	if (task_in_livedump_stage(dump, COPY_THREADS) &&
 	    !(clone_flags & CLONE_LIVEDUMP) && (clone_flags & CLONE_THREAD)) {
 		/*
 		 * This thread is currently being livedumped and the
 		 * dumping process is in COPY_THREADS stage. Make sure
 		 * the new thread is livedumped, too.
 		 */
-		__livedump_signal_clone(tsk);
+		__livedump_signal_clone(tsk, dump);
 	} else if (clone_flags & CLONE_LIVEDUMP) {
 		ret = livedump_setup_clone(tsk, clone_flags);
 	}
@@ -312,7 +316,7 @@ static inline void livedump_check_exit(struct task_struct *tsk)
 	struct livedump_context *dump = livedump_task_dump(tsk);
 
 	if (__task_in_livedump(dump)) {
-		if (livedump_stage(tsk->dump) == COPY_THREADS) {
+		if (livedump_stage(dump) == COPY_THREADS) {
 			/*
 			 * If livedumping and in COPY_THREADS state,
 			 * that means this thread is expected to clone

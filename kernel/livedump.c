@@ -52,7 +52,7 @@
 
 int livedump_setup_clone(struct task_struct *clone, unsigned long clone_flags)
 {
-	struct livedump_context *dump = current->dump;
+	struct livedump_context *dump = livedump_task_dump(current);
 	struct livedump_param *param = &dump->param;
 	int err, prio;
 	struct sighand_struct *oldsighand = clone->sighand;
@@ -154,10 +154,9 @@ static void livedump_wait(struct livedump_context *dump)
  */
 static void livedump_clone_thread(void)
 {
-	struct livedump_context *dump;
+	struct livedump_context *dump = livedump_task_dump(current);
 	struct task_struct *clone;
 
-	dump = current->dump;
 	BUG_ON(!dump);
 
 	if (current == dump->orig_leader) {
@@ -169,8 +168,8 @@ static void livedump_clone_thread(void)
 		if (IS_ERR(clone))
 			goto err;
 
-		clone->dump = get_dump(dump);
 		dump->dumped_leader = clone;
+		livedump_set_task_dump(clone, get_dump(dump));
 
 		/*
 		 * Request all the other threads to clone.
@@ -179,7 +178,7 @@ static void livedump_clone_thread(void)
 		spin_lock_irq(&current->sighand->siglock);
 		for (p = next_thread(current); p != current;
 						p = next_thread(p))
-			__livedump_signal_clone(p);
+			__livedump_signal_clone(p, dump);
 		spin_unlock_irq(&current->sighand->siglock);
 	} else {
 		clone = livedump_clone(CLONE_THREAD | CLONE_SIGHAND | CLONE_VM);
@@ -201,11 +200,10 @@ err:
 /*
  * Copy the mm from the original thread group to the clone group.
  */
-static long livedump_copy_context(void)
+static long livedump_copy_context(struct livedump_context *dump)
 {
 	struct mm_struct *newmm, *oldmm;
 	struct task_struct *p = current;
-	struct livedump_context *dump = p->dump;
 
 	BUG_ON(!dump);
 	BUG_ON(!dump->orig_leader);
@@ -249,9 +247,9 @@ static long livedump_copy_context(void)
  * Complete the dump. Core file is dumped only if dump->status is 0
  * before dumping, i.e. there was no errors on the previous stages.
  */
-void livedump_perform_dump(siginfo_t *info)
+static void livedump_perform_dump(siginfo_t *info,
+				  struct livedump_context *dump)
 {
-	struct livedump_context *dump = current->dump;
 	sigset_t blocked;
 	long status;
 
@@ -263,7 +261,7 @@ void livedump_perform_dump(siginfo_t *info)
 		/* There was no errors. Try to copy mm and other
 		   substantial stuff, and allow original threads
 		   to run in case of success. */
-		status = livedump_copy_context();
+		status = livedump_copy_context(dump);
 	if (status) {
 		/* There was some error, while copying mm or earlier.
 		   Allow original threads to run, but do not dump core. */
@@ -292,17 +290,17 @@ out:
 
 void livedump_handle_signal(siginfo_t *info)
 {
-	switch (livedump_stage(current->dump)) {
+	struct livedump_context *dump = livedump_task_dump(current);
+
+	switch (livedump_stage(dump)) {
 	case COPY_THREADS:
 		livedump_clone_thread();
 		break;
 	case PERFORM_DUMP:
-		if (thread_group_leader(current)) {
-			livedump_perform_dump(info);
-		} else {
-			set_task_state(current, TASK_STOPPED);
-			set_tsk_need_resched(current);
-		}
+		if (thread_group_leader(current))
+			livedump_perform_dump(info, dump);
+		else
+			BUG();
 		break;
 	}
 }
@@ -393,10 +391,10 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
             (orig_leader->flags & PF_SIGNALED) ||
             (orig_leader->signal->flags & SIGNAL_GROUP_EXIT))
                 ret = -EINVAL;
-	else if (orig_leader->dump)
+	else if (task_in_livedump(orig_leader))
 		ret = -EINPROGRESS;
 	else
-		orig_leader->dump = dump;
+		livedump_set_task_dump(orig_leader, dump);
 	task_unlock(orig_leader);
 	if (ret)
 		goto out;
@@ -413,7 +411,7 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 		dumper = kthread_run(livedump_dumper_thread, dump, "dump_%s",
 				     current->comm);
 		if (IS_ERR(dumper)) {
-			orig_leader->dump = NULL;
+			livedump_set_task_dump(orig_leader, NULL);
 			kfree(dump);
 			ret = PTR_ERR(dumper);
 		} else {
