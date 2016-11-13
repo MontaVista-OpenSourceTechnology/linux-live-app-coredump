@@ -318,6 +318,7 @@ static int livedump_take(struct livedump_context *dump)
 
 	get_dump(dump);
 	/* Initialize the rest of livedump context. */
+	dump->dump_manager = current;
 	livedump_set_status(dump, 0);
 	livedump_set_stage(dump, COPY_THREADS);
 	init_completion(&dump->dump_complete);

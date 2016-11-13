@@ -60,6 +60,9 @@ struct livedump_context {
 	/* The thread group leader of the cloned task. */
 	struct task_struct *dumped_leader;
 
+	/* The thread that is running the dump task. */
+	struct task_struct *dump_manager;
+
 	/* Number of tasks still in the process of being cloned. */
 	atomic_t nr_clone_remains;
 
@@ -154,9 +157,14 @@ static inline void livedump_unblock_signals(sigset_t *restoreset)
 	spin_unlock_irq(&current->sighand->siglock);
 }
 
+static inline int __task_in_livedump(struct livedump_context *dump)
+{
+	return dump != NULL;
+}
+
 static inline int task_in_livedump(struct task_struct *tsk)
 {
-	return livedump_task_dump(tsk) != NULL;
+	return __task_in_livedump(livedump_task_dump(tsk));
 }
 
 static inline int task_in_livedump_stage(struct task_struct *tsk,
@@ -166,19 +174,29 @@ static inline int task_in_livedump_stage(struct task_struct *tsk,
 		(livedump_stage(tsk->dump) == check_stage) : 0;
 }
 
-static inline int livedump_task_is_clone_child(struct task_struct *tsk)
+static inline int __livedump_task_is_clone_child(struct task_struct *tsk,
+						 struct livedump_context *dump)
 {
-	struct livedump_context *dump = livedump_task_dump(tsk);
 	return (dump &&
 		tsk != tsk->group_leader &&
 		dump->dumped_leader == tsk->group_leader);
 }
 
-static inline int livedump_task_is_clone(struct task_struct *tsk)
+static inline int livedump_task_is_clone_child(struct task_struct *tsk)
 {
-	struct livedump_context *dump = livedump_task_dump(tsk);
+	return __livedump_task_is_clone_child(tsk, livedump_task_dump(tsk));
+}
+
+static inline int __livedump_task_is_clone(struct task_struct *tsk,
+					   struct livedump_context *dump)
+{
 	return (dump &&
 		tsk->group_leader == dump->dumped_leader);
+}
+
+static inline int livedump_task_is_clone(struct task_struct *tsk)
+{
+	return __livedump_task_is_clone(tsk, livedump_task_dump(tsk));
 }
 
 static inline void livedump_wait_for_completion_sig(struct completion *c)
@@ -291,7 +309,9 @@ static inline void livedump_thread_clone_done(struct livedump_context *dump)
  */
 static inline void livedump_check_exit(struct task_struct *tsk)
 {
-	if (task_in_livedump(tsk)) {
+	struct livedump_context *dump = livedump_task_dump(tsk);
+
+	if (__task_in_livedump(dump)) {
 		if (livedump_stage(tsk->dump) == COPY_THREADS) {
 			/*
 			 * If livedumping and in COPY_THREADS state,
@@ -300,32 +320,54 @@ static inline void livedump_check_exit(struct task_struct *tsk)
 			 * matter, so just pretend like it was never
 			 * requested.
 			 */
-			__livedump_thread_clone_done(tsk->dump, 1);
+			__livedump_thread_clone_done(dump, 1);
 		}
 
 		/* Free the dump variable if necessary. */
-		put_dump(tsk->dump);
+		put_dump(dump);
 		livedump_set_task_dump(tsk, NULL);
 	}
 }
 
-static inline int livedump_signal_send_ok(struct task_struct *tsk)
+static inline int livedump_signal_send_ok(int sig, struct task_struct *tsk)
 {
-	if (livedump_task_is_clone_child(tsk)) {
+	struct livedump_context *dump = livedump_task_dump(tsk);
+
+	if (!dump)
+		return 1;
+
+	if (__livedump_task_is_clone_child(tsk, dump)) {
 		/*
 		 * The livedump clone children (not clone thread group
 		 * leader) can only receive signals from the clone
 		 * thread group leader.  Just ignore everything else.
 		 */
-		if (current != tsk->group_leader)
+		if (current != dump->dumped_leader)
 			return 0;
-	} else if (livedump_task_is_clone(tsk)) {
+	} else if (__livedump_task_is_clone(tsk, dump)) {
 		/*
 		 * The clone thread group leader.  It may only receive
 		 * signals from the original thread group leader.
 		 */
-		if (current != tsk->dump->orig_leader)
+		if (current != dump->orig_leader)
 			return 0;
+	} else {
+		if (sig != SIGKILL)
+			/* Let other signals be handled normally. */
+			return 1;
+
+		if (tsk == dump->orig_leader)
+			/*
+			 * The original leader should only get SIGKILLs from
+			 * the dump manager.
+			 */
+			return current == dump->dump_manager;
+
+		/*
+		 * Other threads in the original task should only get
+		 * SIGKILLs from the original leader.
+		 */
+		return current == dump->orig_leader;
 	}
 
 	return 1;

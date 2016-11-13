@@ -980,7 +980,7 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 
 	assert_spin_locked(&t->sighand->siglock);
 
-	if (!livedump_signal_send_ok(t))
+	if (!livedump_signal_send_ok(sig, t))
 		return 0;
 
 	result = TRACE_SIGNAL_IGNORED;
