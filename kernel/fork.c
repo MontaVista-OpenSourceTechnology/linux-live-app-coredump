@@ -2256,9 +2256,9 @@ __latent_entropy struct task_struct *copy_process(
 			attach_pid(p, PIDTYPE_SID);
 			__this_cpu_inc(process_counts);
 		} else {
-			current->signal->nr_threads++;
-			atomic_inc(&current->signal->live);
-			refcount_inc(&current->signal->sigcnt);
+			p->signal->nr_threads++;
+			atomic_inc(&p->signal->live);
+			refcount_inc(&p->signal->sigcnt);
 			task_join_group_stop(p);
 			list_add_tail_rcu(&p->thread_group,
 					  &p->group_leader->thread_group);
