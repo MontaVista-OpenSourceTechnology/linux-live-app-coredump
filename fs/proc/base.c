@@ -2863,7 +2863,7 @@ static ssize_t livedump_write(struct file *file, const char __user *buf,
 			} else if (strcmp(parm, "core_limit") == 0) {
 				lparam.core_limit_set = true;
 				if (strcmp(val, "unlimited") == 0)
-					lparam.core_limit = ~0UL;
+					lparam.core_limit = RLIM_INFINITY;
 				else
 					lparam.core_limit =
 						simple_strtoul(val, &end, 0);
