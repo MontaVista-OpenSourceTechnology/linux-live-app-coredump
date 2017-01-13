@@ -1628,6 +1628,8 @@ struct task_struct *copy_process(unsigned long clone_flags,
 				p->group_leader = current->dump->leader;
 			list_add_tail_rcu(&p->thread_group,
 					  &p->group_leader->thread_group);
+			list_add_tail_rcu(&p->thread_node,
+					  &p->signal->thread_head);
 			p->dump = get_dump(current->dump);
 #endif
 		} else {
