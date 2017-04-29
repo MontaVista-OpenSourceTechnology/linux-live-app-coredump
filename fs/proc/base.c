@@ -2727,7 +2727,6 @@ static int proc_pid_personality(struct seq_file *m, struct pid_namespace *ns,
 struct livedump_proc_data {
 	char buf[500];
 	int pos;
-	struct task_struct *task;
 };
 
 static int livedump_open(struct inode *inode, struct file *file)
@@ -2738,7 +2737,6 @@ static int livedump_open(struct inode *inode, struct file *file)
 	if (!pdata)
 		return -ENOMEM;
 	pdata->pos = 0;
-	pdata->task = get_proc_task(inode);
 	file->private_data = pdata;
 	return 0;
 }
@@ -2756,8 +2754,11 @@ static ssize_t livedump_write(struct file *file, const char __user *buf,
 {
 	struct livedump_proc_data *pdata = file->private_data;
 	struct livedump_param lparam;
-	int ret;
+	int ret = 0;
 	char *curr, *next;
+
+	if (pdata->pos == -1) /* Only do this once per open. */
+		return count;
 
 	if (count + pdata->pos > sizeof(pdata->buf))
 		return -EFBIG;
@@ -2766,6 +2767,13 @@ static ssize_t livedump_write(struct file *file, const char __user *buf,
 
 	curr = strchr(pdata->buf, '\n');
 	if (curr) {
+		struct task_struct *tsk = get_proc_task(file_inode(file));
+
+		pdata->pos = -1;
+
+		if (!tsk)
+			return -ESRCH;
+
 		init_livedump_param(&lparam);
 
 		*curr = '\0';
@@ -2792,12 +2800,16 @@ static ssize_t livedump_write(struct file *file, const char __user *buf,
 					lparam.core_limit =
 						simple_strtoul(val, &end, 0);
 			} else
-				return -EINVAL;
+				ret = -EINVAL;
 			if (*end)
-				return -EINVAL;
+				ret = -EINVAL;
 		}
 
-		ret = do_livedump(pdata->task, &lparam);
+		if (!ret)
+			ret = do_livedump(tsk, &lparam);
+
+		put_task_struct(tsk);
+
 		if (ret < 0)
 			return ret;
 	}
