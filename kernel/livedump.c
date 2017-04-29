@@ -17,21 +17,20 @@
  * O: allocate dump
  * O: T->livedump = dump
  * O: signal(T)
- * O: wait for dump_ready
- * T: C = clone(T)
+ * O: wait for all cloned (dump_ready)
+ * T: C = clone(T) (also clones mm)
  * T: for each (t) t->livedump = dump, signal(t)
- * T: wait for mm cloned
- * t: c = clone(c)
+ * T: wait for all cloned (dump_ready)
+ * t: c = clone(c) (Copies mm from C)
  * t: if (I am last clone) signal(C)
- * t: wait for mm cloned
- * C: C->mm = clone mm
- * C: wake O with dump_ready
- * O: set mm cloned
+ * t: wait for all cloned (dump_ready)
+ * C: set mm cloned with with dump_ready (wakes all T, t, and O)
+ * T,t: Return to normal operation
  * O: wait for dump_complete
- * C: for each (c) c->mm = cloned mm
  * C: dump core
  * C: wake O with dump_complete
  * C: exit
+ * O: Return status
  */
 
 #include <linux/kernel.h>
@@ -136,7 +135,7 @@ static void livedump_wait(struct livedump_context *dump)
 		/* The leader is cleared when the dump is complete. */
 		livedump_set_task_dump(current, NULL);
 	livedump_thread_clone_done(dump);
-	wait_for_completion(&dump->dump_ready);
+	livedump_wait_for_dump_ready(dump, false);
 	if (dump->orig_leader == current) {
 		/*
 		 * We hold the original leader's dump variable until
@@ -169,7 +168,7 @@ static void livedump_clone_thread(void)
 		if (IS_ERR(clone)) {
 			livedump_set_status(dump, PTR_ERR(clone));
 			livedump_set_task_dump(current, NULL);
-			complete_all(&dump->dump_ready);
+			livedump_set_dump_ready(dump);
 			put_dump(dump);
 			return;
 		}
@@ -220,7 +219,7 @@ static void livedump_perform_dump(siginfo_t *info,
 		/* There was some error, while copying mm or earlier.
 		   Allow original threads to run, but do not dump core. */
 		livedump_set_status(dump, status);
-	complete_all(&dump->dump_ready);
+	livedump_set_dump_ready(dump);
 	if (status)
 		goto out;
 
@@ -274,6 +273,9 @@ static int livedump_take(struct livedump_context *dump)
 	livedump_set_status(dump, 0);
 	livedump_set_stage(dump, COPY_THREADS);
 	init_completion(&dump->dump_complete);
+	mutex_init(&dump->dump_ready_lock);
+	dump->dump_ready_done = false;
+	dump->dump_ready_count = 1; /* We will wait. */
 	init_completion(&dump->dump_ready);
 
 	livedump_signal_leader(dump->orig_leader);

@@ -14,6 +14,7 @@
 #include <linux/kref.h>
 #include <linux/mutex.h>
 #include <linux/completion.h>
+#include <linux/swait.h>
 #include <linux/slab.h>
 #include <asm/atomic.h>
 #include <asm/barrier.h>
@@ -68,7 +69,10 @@ struct livedump_context {
 	/* Number of tasks still in the process of being cloned. */
 	atomic_t nr_clone_remains;
 
-	/* Tell the main thread the mm is duplicated. */
+	/* Tell the threads the mm is duplicated. */
+	struct mutex dump_ready_lock;
+	unsigned int dump_ready_count;
+	bool dump_ready_done;
 	struct completion dump_ready;
 
 	/* Tell the main thread the dump is complete. */
@@ -207,7 +211,7 @@ static inline void livedump_wait_for_completion_sig(struct completion *c)
 	struct ksignal ks;
 
 	/*
-	 * This thread is currently in a livedump groupo to be cloned,
+	 * This thread is currently in a livedump group to be cloned,
 	 * but has to wait, make sure it handles signals.  The only
 	 * signal that should be handled here is the SIGKILL from
 	 * livedump, so no signal handling should be necessary.
@@ -221,12 +225,46 @@ static inline void livedump_wait_for_completion_sig(struct completion *c)
 	livedump_unblock_signals(&set);
 }
 
+static inline void livedump_wait_for_dump_ready(struct livedump_context *dump,
+						bool handle_sig)
+{
+	bool do_wait = false;
+
+	mutex_lock(&dump->dump_ready_lock);
+	if (!dump->dump_ready_done) {
+		do_wait = true;
+		dump->dump_ready_count++;
+	}
+	mutex_unlock(&dump->dump_ready_lock);
+	if (do_wait) {
+		if (handle_sig)
+			livedump_wait_for_completion_sig(&dump->dump_ready);
+		else
+			wait_for_completion(&dump->dump_ready);
+	}
+}
+
+static inline void livedump_set_dump_ready(struct livedump_context *dump)
+{
+	unsigned int count;
+
+	mutex_lock(&dump->dump_ready_lock);
+	dump->dump_ready_done = true;
+	count = dump->dump_ready_count;
+	mutex_unlock(&dump->dump_ready_lock);
+
+	while (count) {
+		complete(&dump->dump_ready);
+		count--;
+	}
+}
+
 static inline void livedump_maybe_wait_clone_done(struct task_struct *tsk)
 {
 	struct livedump_context *dump = livedump_task_dump(tsk);
 
 	if (task_in_livedump_stage(dump, COPY_THREADS))
-		livedump_wait_for_completion_sig(&dump->dump_ready);
+		livedump_wait_for_dump_ready(dump, true);
 }
 
 static inline void __livedump_send_sig(struct task_struct *tsk)
@@ -285,7 +323,7 @@ static inline void __livedump_thread_clone_done(struct livedump_context *dump,
 {
 	if (atomic_dec_and_test(&dump->nr_clone_remains)) {
 		if (livedump_status(dump)) {
-			complete_all(&dump->dump_ready);
+			livedump_set_dump_ready(dump);
 			return;
 		}
 
