@@ -1093,11 +1093,11 @@ long ptrace_livedump(struct task_struct *tsk,
 		init_livedump_param(&lparam);
 	}
 
-	read_lock(&tasklist_lock);
+	rcu_read_lock();
 	leader = tsk->group_leader;
 	BUG_ON(!leader);
 	get_task_struct(leader);
-	read_unlock(&tasklist_lock);
+	rcu_read_unlock();
 
 	/* FIXME - better security check here ? */
 	if (!ptrace_check_attach(leader, 0))
