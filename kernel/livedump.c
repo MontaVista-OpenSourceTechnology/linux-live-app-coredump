@@ -325,18 +325,14 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 			param->oom_adj < OOM_DISABLE ||
 			param->oom_adj > OOM_ADJUST_MAX ||
 			param->core_limit > RLIM_INFINITY)
-		ret = -EINVAL;
+		return -EINVAL;
 	else if ((param->sched_nice < 0 && !capable(CAP_SYS_NICE)) ||
 			(param->core_limit && !capable(CAP_SYS_RESOURCE)))
-		ret = -EPERM;
-	if (ret)
-		goto out;
+		return -EPERM;
 
 	dump = kmalloc(sizeof *dump, GFP_KERNEL);
-	if (!dump) {
-		ret = -ENOMEM;
-		goto out;
-	}
+	if (!dump)
+		return -ENOMEM;
 
 	dump->param = *param;
 	kref_init(&dump->ref);
@@ -388,6 +384,5 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 		ret = livedump_take(dump);
 	}
 out:
-	put_task_struct(orig_leader);
 	return ret;
 }
