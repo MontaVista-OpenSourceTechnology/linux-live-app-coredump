@@ -56,6 +56,9 @@ int livedump_take(struct livedump_context *dump)
 	livedump_set_status(dump, 0);
 	livedump_stage(dump, COPY_LEADER);
 	init_completion(&dump->dump_complete);
+	mutex_init(&dump->dump_ready_lock);
+	dump->dump_ready_done = false;
+	dump->dump_ready_count = 1; /* We will wait. */
 	init_completion(&dump->dump_ready);
 
 	/* Kref is 1, so don't use get_dump(). */
@@ -63,7 +66,7 @@ int livedump_take(struct livedump_context *dump)
 	/* Signal the group leader to clone, thus starting the dump. */
 	livedump_request(dump->origin);
 
-	wait_for_completion(&dump->dump_ready);
+	livedump_wait_for_dump_ready(dump);
 	status = livedump_status(dump);
 	if (unlikely(status)) {
 		/* There was error cloning leader. */
@@ -144,7 +147,7 @@ void livedump_clone_leader(void)
 	clone = livedump_clone(&dump->param, CLONE_PARENT);
 	if (unlikely(IS_ERR(clone))) {
 		livedump_set_status(dump, PTR_ERR(clone));
-		complete_all(&dump->dump_ready);
+		livedump_set_dump_ready(dump);
 		return;
 	}
 
@@ -233,7 +236,7 @@ static long livedump_copy_context(void)
 		return -ENOMEM;
 
 	/* MM is copied, we can now let the original threads go. */
-	complete_all(&dump->dump_ready);
+	livedump_set_dump_ready(dump);
 
 	/* FIXME - refcounts on oldmm? */
 	oldmm = p->active_mm;
@@ -280,7 +283,7 @@ void livedump_perform_dump(siginfo_t *info)
 	if (status) {
 		/* There was some error, while copying mm or earlier.
 		   Allow original threads to run, but do not dump core. */
-		complete_all(&dump->dump_ready);
+		livedump_set_dump_ready(dump);
 		goto exiting;
 	}
 
