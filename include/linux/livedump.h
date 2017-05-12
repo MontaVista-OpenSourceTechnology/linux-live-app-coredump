@@ -51,7 +51,10 @@ struct livedump_context {
 	/* Number of tasks still in the process of being cloned. */
 	atomic_t nr_clone_remains;
 
-	/* Tell the main thread the mm is duplicated. */
+	/* Tell the threads the mm is duplicated. */
+	struct mutex dump_ready_lock;
+	unsigned int dump_ready_count;
+	bool dump_ready_done;
 	struct completion dump_ready;
 
 	/* Tell the main thread the dump is complete. */
@@ -122,13 +125,42 @@ static inline void put_dump(struct livedump_context *dump)
 	kref_put(&dump->ref, livedump_ref_done);
 }
 
+static inline void livedump_wait_for_dump_ready(struct livedump_context *dump)
+{
+	bool do_wait = false;
+
+	mutex_lock(&dump->dump_ready_lock);
+	if (!dump->dump_ready_done) {
+		do_wait = true;
+		dump->dump_ready_count++;
+	}
+	mutex_unlock(&dump->dump_ready_lock);
+	if (do_wait)
+		wait_for_completion(&dump->dump_ready);
+}
+
+static inline void livedump_set_dump_ready(struct livedump_context *dump)
+{
+	unsigned int count;
+
+	mutex_lock(&dump->dump_ready_lock);
+	dump->dump_ready_done = true;
+	count = dump->dump_ready_count;
+	mutex_unlock(&dump->dump_ready_lock);
+
+	while (count) {
+		complete(&dump->dump_ready);
+		count--;
+	}
+}
+
 /*
  * If we are waiting, we hold a reference to the dump structure;
  * livedump_wait() decrements the reference and frees if necessary.
  */
 static inline void livedump_wait(struct livedump_context *dump)
 {
-	wait_for_completion(&dump->dump_ready);
+	livedump_wait_for_dump_ready(dump);
 	current->dump = NULL;
 	put_dump(dump);
 }
