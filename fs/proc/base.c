@@ -2860,6 +2860,14 @@ static int livedump_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static int livedump_release(struct inode *inode, struct file *file)
+{
+	struct livedump_proc_data *pdata = file->private_data;
+
+	kfree(pdata);
+	return 0;
+}
+
 static ssize_t livedump_write(struct file *file, const char __user *buf,
 			      size_t count, loff_t *ppos)
 {
@@ -2930,6 +2938,7 @@ static ssize_t livedump_write(struct file *file, const char __user *buf,
 static const struct file_operations proc_livedump_operations = {
 	.open  = livedump_open,
 	.write = livedump_write,
+	.release = livedump_release,
 };
 #endif
 
