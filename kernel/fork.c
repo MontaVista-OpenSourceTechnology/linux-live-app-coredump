@@ -1574,13 +1574,14 @@ __latent_entropy struct task_struct *copy_process(
 					unsigned long stack_start,
 					unsigned long stack_size,
 					int __user *child_tidptr,
-					struct pid *pid,
+					struct pid *usepid,
 					int trace,
 					unsigned long tls,
 					int node)
 {
 	int retval;
 	struct task_struct *p;
+	struct pid *pid;
 
 	/*
 	 * Don't allow sharing the root directory with processes in a different
@@ -1804,7 +1805,9 @@ __latent_entropy struct task_struct *copy_process(
 	if (retval)
 		goto bad_fork_cleanup_io;
 
-	if (pid != &init_struct_pid) {
+	if (usepid) {
+		pid = usepid;
+	} else {
 		pid = alloc_pid(p->nsproxy->pid_ns_for_children);
 		if (IS_ERR(pid)) {
 			retval = PTR_ERR(pid);
@@ -1978,7 +1981,7 @@ bad_fork_cancel_cgroup:
 	cgroup_cancel_fork(p);
 bad_fork_free_pid:
 	cgroup_threadgroup_change_end(current);
-	if (pid != &init_struct_pid)
+	if (!usepid)
 		free_pid(pid);
 bad_fork_cleanup_thread:
 	exit_thread(p);
