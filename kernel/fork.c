@@ -1133,11 +1133,12 @@ struct task_struct *copy_process(unsigned long clone_flags,
 				 unsigned long stack_start,
 				 unsigned long stack_size,
 				 int __user *child_tidptr,
-				 struct pid *pid,
+				 struct pid *usepid,
 				 int trace)
 {
 	int retval;
 	struct task_struct *p;
+	struct pid *pid;
 
 	if ((clone_flags & (CLONE_NEWNS|CLONE_FS)) == (CLONE_NEWNS|CLONE_FS))
 		return ERR_PTR(-EINVAL);
@@ -1347,7 +1348,9 @@ struct task_struct *copy_process(unsigned long clone_flags,
 	if (retval)
 		goto bad_fork_cleanup_io;
 
-	if (pid != &init_struct_pid && !livedump_is_clone(clone_flags)) {
+	if (usepid) {
+		pid = usepid;
+	} else {
 		retval = -ENOMEM;
 		pid = alloc_pid(p->nsproxy->pid_ns);
 		if (!pid)
@@ -1494,7 +1497,7 @@ struct task_struct *copy_process(unsigned long clone_flags,
 bad_fork_free_pid:
 	spin_unlock(&current->sighand->siglock);
 	write_unlock_irq(&tasklist_lock);
-	if (pid != &init_struct_pid)
+	if (!usepid)
 		free_pid(pid);
 bad_fork_cleanup_io:
 	if (p->io_context)
