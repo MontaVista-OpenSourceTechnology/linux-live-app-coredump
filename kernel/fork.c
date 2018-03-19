@@ -1767,7 +1767,7 @@ static __always_inline void delayed_free_task(struct task_struct *tsk)
  * flags). The actual kick-off is left to the caller.
  */
 __latent_entropy struct task_struct *copy_process(
-					struct pid *pid,
+					struct pid *usepid,
 					int trace,
 					int node,
 					struct kernel_clone_args *args)
@@ -1777,6 +1777,7 @@ __latent_entropy struct task_struct *copy_process(
 	struct multiprocess_signals delayed;
 	struct file *pidfile = NULL;
 	u64 clone_flags = args->flags;
+	struct pid *pid;
 
 	/*
 	 * Don't allow sharing the root directory with processes in a different
@@ -2030,7 +2031,9 @@ __latent_entropy struct task_struct *copy_process(
 
 	stackleak_task_init(p);
 
-	if (pid != &init_struct_pid) {
+	if (usepid) {
+		pid = usepid;
+	} else {
 		pid = alloc_pid(p->nsproxy->pid_ns_for_children);
 		if (IS_ERR(pid)) {
 			retval = PTR_ERR(pid);
@@ -2250,7 +2253,7 @@ bad_fork_put_pidfd:
 		put_unused_fd(pidfd);
 	}
 bad_fork_free_pid:
-	if (pid != &init_struct_pid)
+	if (!usepid)
 		free_pid(pid);
 bad_fork_cleanup_thread:
 	exit_thread(p);
