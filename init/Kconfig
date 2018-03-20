@@ -1474,8 +1474,10 @@ config ELF_CORE
 	  Enable support for generating core dumps. Disabling saves about 4k.
 
 config LIVEDUMP
-	default y
 	bool "Enable Live Application Dump"
+	depends on COREDUMP
+	select PID_NS
+	default n
 	help
 	  Enable support for live application dump, i.e. the capability to
 	  drop core files from the running process without (substantial)
