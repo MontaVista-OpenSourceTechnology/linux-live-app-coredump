@@ -96,25 +96,31 @@ struct livedump_context {
 static inline void livedump_set_status(struct livedump_context *dump,
 				       long status)
 {
-	set_mb(dump->status, status);
+	smp_wmb();
+	WRITE_ONCE(dump->status, status);
 }
 
 static inline int livedump_status(struct livedump_context *dump)
 {
+	int val = READ_ONCE(dump->status);
+
 	smp_rmb();
-	return dump->status;
+	return val;
 }
 
 static inline void livedump_set_stage(struct livedump_context *dump,
 				      livedump_stage_t stage)
 {
-	set_mb(dump->stage, stage);
+	smp_wmb();
+	WRITE_ONCE(dump->stage, stage);
 }
 
 static inline livedump_stage_t livedump_stage(struct livedump_context *dump)
 {
+	int val = READ_ONCE(dump->stage);
+
 	smp_rmb();
-	return dump->stage;
+	return val;
 }
 
 static inline void livedump_set_task_dump(struct task_struct *tsk,
@@ -125,8 +131,10 @@ static inline void livedump_set_task_dump(struct task_struct *tsk,
 
 static inline struct livedump_context *livedump_task_dump(struct task_struct *tsk)
 {
+	struct livedump_context *val = READ_ONCE(tsk->livedump);
+
 	smp_rmb();
-	return tsk->livedump;
+	return val;
 }
 
 extern void livedump_ref_done(struct kref *ref);
