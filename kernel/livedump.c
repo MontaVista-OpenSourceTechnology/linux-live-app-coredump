@@ -380,8 +380,10 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 			ret = PTR_ERR(dump->pid_ns);
 	}
 	task_unlock(orig_leader);
-	if (ret)
+	if (ret) {
+		kfree(dump);
 		goto out;
+	}
 
 	/* We may start the dump. */
 	if (current->group_leader == orig_leader) {
