@@ -151,12 +151,15 @@ static void set_last_pid(struct pid_namespace *pid_ns, int base, int pid)
 	} while ((prev != last_write) && (pid_before(base, last_write, pid)));
 }
 
-static int alloc_pidmap(struct pid_namespace *pid_ns)
+static int alloc_pidmap(struct pid_namespace *pid_ns, int use_pid)
 {
 	int i, offset, max_scan, pid, last = pid_ns->last_pid;
 	struct pidmap *map;
 
-	pid = last + 1;
+	if (use_pid)
+		pid = use_pid;
+	else
+		pid = last + 1;
 	if (pid >= pid_max)
 		pid = RESERVED_PIDS;
 	offset = pid & BITS_PER_PAGE_MASK;
@@ -191,6 +194,8 @@ static int alloc_pidmap(struct pid_namespace *pid_ns)
 					set_last_pid(pid_ns, last, pid);
 					return pid;
 				}
+				if (use_pid)
+					break;
 				offset = find_next_offset(map, offset);
 				if (offset >= BITS_PER_PAGE)
 					break;
@@ -199,6 +204,8 @@ static int alloc_pidmap(struct pid_namespace *pid_ns)
 					break;
 			}
 		}
+		if (use_pid)
+			break;
 		if (map < &pid_ns->pidmap[(pid_max-1)/BITS_PER_PAGE]) {
 			++map;
 			offset = 0;
@@ -294,7 +301,7 @@ void free_pid(struct pid *pid)
 	call_rcu(&pid->rcu, delayed_put_pid);
 }
 
-struct pid *alloc_pid(struct pid_namespace *ns)
+struct pid *alloc_pid_nr(struct pid_namespace *ns, int use_pid)
 {
 	struct pid *pid;
 	enum pid_type type;
@@ -310,11 +317,13 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 	tmp = ns;
 	pid->level = ns->level;
 	for (i = ns->level; i >= 0; i--) {
-		nr = alloc_pidmap(tmp);
+		nr = alloc_pidmap(tmp, use_pid);
 		if (nr < 0) {
 			retval = nr;
 			goto out_free;
 		}
+		BUG_ON(use_pid && use_pid != nr);
+		use_pid = 0;
 
 		pid->numbers[i].nr = nr;
 		pid->numbers[i].ns = tmp;
@@ -356,6 +365,11 @@ out_free:
 
 	kmem_cache_free(ns->pid_cachep, pid);
 	return ERR_PTR(retval);
+}
+
+struct pid *alloc_pid(struct pid_namespace *ns)
+{
+	return alloc_pid_nr(ns, 0);
 }
 
 void disable_pid_allocation(struct pid_namespace *ns)
