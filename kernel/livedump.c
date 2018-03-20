@@ -107,19 +107,25 @@ int livedump_setup_clone(struct task_struct *clone, unsigned long clone_flags)
 /*
  * Copy current task_struct, make clone suitable for dumping.
  */
-static struct task_struct *livedump_clone(unsigned long clone_flags)
+static struct task_struct *livedump_clone(struct livedump_context *dump,
+					  unsigned long clone_flags)
 {
 	/* We use the same pid as the cloned thread. */
-	struct pid *pid = get_task_pid(current, PIDTYPE_PID);
+	struct pid *pid, *opid = get_task_pid(current, PIDTYPE_PID);
 	struct pt_regs regs;
 	struct task_struct *clone;
+
+	pid = alloc_pid_nr(dump->pid_ns, pid_vnr(opid));
+	put_pid(opid);
+	if (IS_ERR(pid))
+		return ERR_PTR(PTR_ERR(pid));
 
 	regs = *task_pt_regs(current);
 	clone = copy_process(CLONE_LIVEDUMP | clone_flags,
 			     KSTK_ESP(current), 0, NULL, pid, 0, 0,
 			     NUMA_NO_NODE);
 	if (IS_ERR(clone)) {
-		put_pid(pid);
+		free_pid(pid);
 		return clone;
 	}
 
@@ -165,7 +171,7 @@ static void livedump_clone_thread(void)
 
 		atomic_set(&dump->nr_clone_remains, 1);
 
-		clone = livedump_clone(CLONE_PARENT);
+		clone = livedump_clone(dump, CLONE_PARENT);
 		if (IS_ERR(clone)) {
 			livedump_set_status(dump, PTR_ERR(clone));
 			livedump_set_task_dump(current, NULL);
@@ -187,7 +193,8 @@ static void livedump_clone_thread(void)
 			__livedump_signal_clone(p, dump);
 		spin_unlock_irq(&current->sighand->siglock);
 	} else {
-		clone = livedump_clone(CLONE_THREAD | CLONE_SIGHAND | CLONE_VM);
+		clone = livedump_clone(dump,
+				       CLONE_THREAD | CLONE_SIGHAND | CLONE_VM);
 		if (IS_ERR(clone)) {
 			/*
 			 * Save first error we've encountered. Other threads
@@ -261,7 +268,12 @@ void livedump_handle_signal(siginfo_t *info)
 
 void livedump_ref_done(struct kref *ref)
 {
-	kfree(container_of(ref, struct livedump_context, ref));
+	struct livedump_context *dump = container_of(ref,
+						     struct livedump_context,
+						     ref);
+
+	put_pid_ns(dump->pid_ns);
+	kfree(dump);
 }
 
 static int livedump_take(struct livedump_context *dump)
@@ -354,8 +366,19 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
                 ret = -EINVAL;
 	else if (task_in_livedump(orig_leader))
 		ret = -EINPROGRESS;
-	else
-		livedump_set_task_dump(orig_leader, dump);
+	else {
+		/*
+		 * The parent PID and user namespace for the new
+		 * threads aren't important, we just need something
+		 * there to make the code work.
+		 */
+		dump->pid_ns = copy_pid_ns(CLONE_NEWPID, &init_user_ns,
+					   &init_pid_ns);
+		if (!IS_ERR(dump->pid_ns))
+			livedump_set_task_dump(orig_leader, dump);
+		else
+			ret = PTR_ERR(dump->pid_ns);
+	}
 	task_unlock(orig_leader);
 	if (ret)
 		goto out;

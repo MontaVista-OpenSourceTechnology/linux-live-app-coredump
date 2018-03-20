@@ -16,6 +16,7 @@
 #include <linux/completion.h>
 #include <linux/swait.h>
 #include <linux/slab.h>
+#include <linux/pid.h>
 #include <asm/atomic.h>
 #include <asm/barrier.h>
 #include <linux/oom.h>
@@ -56,6 +57,13 @@ struct livedump_context {
 
 	/* Number of original threads still in the dump process. */
 	struct kref orig_cloning;
+
+	/*
+	 * Namespace for the new PIDs.  We create a new namespace so
+	 * we can keep the pid numbers the same for the cloned
+	 * threads.
+	 */
+	struct pid_namespace *pid_ns;
 
 	/* The thread group leader of the task being dumped. */
 	struct task_struct *orig_leader;

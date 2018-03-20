@@ -1208,6 +1208,7 @@ config ELF_CORE
 
 config LIVEDUMP
 	depends on COREDUMP
+	select PID_NS
 	default n
 	bool "Enable Live Application Dump"
 	help
