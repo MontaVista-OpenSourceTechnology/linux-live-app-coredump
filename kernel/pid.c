@@ -156,7 +156,7 @@ void free_pid(struct pid *pid)
 	call_rcu(&pid->rcu, delayed_put_pid);
 }
 
-struct pid *alloc_pid(struct pid_namespace *ns)
+struct pid *alloc_pid_nr(struct pid_namespace *ns, int use_pid)
 {
 	struct pid *pid;
 	enum pid_type type;
@@ -173,7 +173,7 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 	pid->level = ns->level;
 
 	for (i = ns->level; i >= 0; i--) {
-		int pid_min = 1;
+		int pid_min = 1, local_pid_max = pid_max;
 
 		idr_preload(GFP_KERNEL);
 		spin_lock_irq(&pidmap_lock);
@@ -185,12 +185,22 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 		if (idr_get_cursor(&tmp->idr) > RESERVED_PIDS)
 			pid_min = RESERVED_PIDS;
 
+		if (use_pid) {
+			if (use_pid < pid_min || use_pid >= pid_max) {
+				retval = -EINVAL;
+				goto out_free;
+			}
+
+			pid_min = use_pid;
+			local_pid_max = use_pid + 1;
+		}
+
 		/*
 		 * Store a null pointer so find_pid_ns does not find
 		 * a partially initialized PID (see below).
 		 */
 		nr = idr_alloc_cyclic(&tmp->idr, NULL, pid_min,
-				      pid_max, GFP_ATOMIC);
+				      local_pid_max, GFP_ATOMIC);
 		spin_unlock_irq(&pidmap_lock);
 		idr_preload_end();
 
@@ -198,6 +208,8 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 			retval = (nr == -ENOSPC) ? -EAGAIN : nr;
 			goto out_free;
 		}
+		BUG_ON(use_pid && use_pid != nr);
+		use_pid = 0; /* Only used specified pid on the first level. */
 
 		pid->numbers[i].nr = nr;
 		pid->numbers[i].ns = tmp;
@@ -246,6 +258,11 @@ out_free:
 
 	kmem_cache_free(ns->pid_cachep, pid);
 	return ERR_PTR(retval);
+}
+
+struct pid *alloc_pid(struct pid_namespace *ns)
+{
+	return alloc_pid_nr(ns, 0);
 }
 
 void disable_pid_allocation(struct pid_namespace *ns)
