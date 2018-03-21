@@ -156,7 +156,7 @@ static int map_vdso(const struct vdso_image *image, unsigned long addr)
 	int ret = 0;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -EINTR;
+		return -ERESTARTSYS;
 
 	addr = get_unmapped_area(NULL, addr,
 				 image->size - image->sym_vvar_start, 0, 0);

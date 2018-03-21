@@ -1141,7 +1141,7 @@ static int xol_add_vma(struct mm_struct *mm, struct xol_area *area)
 	int ret;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -EINTR;
+		return -ERESTARTSYS;
 
 	if (mm->uprobes_state.xol_area) {
 		ret = -EALREADY;

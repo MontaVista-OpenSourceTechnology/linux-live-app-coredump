@@ -827,7 +827,7 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 	write = madvise_need_mmap_write(behavior);
 	if (write) {
 		if (down_write_killable(&current->mm->mmap_sem))
-			return -EINTR;
+			return -ERESTARTSYS;
 	} else {
 		down_read(&current->mm->mmap_sem);
 	}

@@ -204,7 +204,7 @@ static struct amdgpu_mn *amdgpu_mn_get(struct amdgpu_device *adev)
 	mutex_lock(&adev->mn_lock);
 	if (down_write_killable(&mm->mmap_sem)) {
 		mutex_unlock(&adev->mn_lock);
-		return ERR_PTR(-EINTR);
+		return ERR_PTR(-ERESTARTSYS);
 	}
 
 	hash_for_each_possible(adev->mn_hash, rmn, node, (unsigned long)mm)

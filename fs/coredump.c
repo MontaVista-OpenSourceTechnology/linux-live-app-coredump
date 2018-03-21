@@ -418,7 +418,7 @@ static int coredump_wait(int exit_code, struct core_state *core_state)
 	core_state->dumper.next = NULL;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -EINTR;
+		return -ERESTARTSYS;
 
 	if (!mm->core_state)
 		core_waiters = zap_threads(tsk, mm, core_state, exit_code);

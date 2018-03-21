@@ -72,7 +72,7 @@ static inline int __down_write_killable(struct rw_semaphore *sem)
 					     &sem->count);
 	if (unlikely(tmp != RWSEM_ACTIVE_WRITE_BIAS))
 		if (IS_ERR(rwsem_down_write_failed_killable(sem)))
-			return -EINTR;
+			return -ERESTARTSYS;
 	return 0;
 }
 

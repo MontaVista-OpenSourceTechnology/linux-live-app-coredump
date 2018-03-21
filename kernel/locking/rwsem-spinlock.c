@@ -255,7 +255,7 @@ out_nolock:
 		__rwsem_do_wake(sem, 0);
 	raw_spin_unlock_irqrestore(&sem->wait_lock, flags);
 
-	return -EINTR;
+	return -ERESTARTSYS;
 }
 
 void __sched __down_write(struct rw_semaphore *sem)

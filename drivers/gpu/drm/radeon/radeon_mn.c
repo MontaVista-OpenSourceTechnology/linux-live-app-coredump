@@ -187,7 +187,7 @@ static struct radeon_mn *radeon_mn_get(struct radeon_device *rdev)
 	int r;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return ERR_PTR(-EINTR);
+		return ERR_PTR(-ERESTARTSYS);
 
 	mutex_lock(&rdev->mn_lock);
 

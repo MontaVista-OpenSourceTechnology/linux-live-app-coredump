@@ -66,7 +66,7 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 	struct mm_struct *mm = current->mm;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -EINTR;
+		return -ERESTARTSYS;
 
 	/* Try to get it loaded right near ld.so/glibc. */
 	vdso_base = STACK_TOP;
