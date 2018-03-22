@@ -112,7 +112,6 @@ static struct task_struct *livedump_clone(struct livedump_context *dump,
 {
 	/* We use the same pid as the cloned thread. */
 	struct pid *pid, *opid = get_task_pid(current, PIDTYPE_PID);
-	struct pt_regs regs;
 	struct task_struct *clone;
 
 	pid = alloc_pid_nr(dump->pid_ns, pid_vnr(opid));
@@ -120,14 +119,11 @@ static struct task_struct *livedump_clone(struct livedump_context *dump,
 	if (IS_ERR(pid))
 		return ERR_PTR(PTR_ERR(pid));
 
-	regs = *task_pt_regs(current);
 	clone = copy_process(CLONE_LIVEDUMP | clone_flags,
 			     KSTK_ESP(current), 0, NULL, pid, 0, 0,
 			     NUMA_NO_NODE);
-	if (IS_ERR(clone)) {
+	if (IS_ERR(clone))
 		free_pid(pid);
-		return clone;
-	}
 
 	return clone;
 }
