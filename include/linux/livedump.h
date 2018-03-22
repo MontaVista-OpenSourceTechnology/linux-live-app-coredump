@@ -84,6 +84,7 @@ struct livedump_context {
 	struct completion dump_ready;
 
 	/* Tell the main thread the dump is complete. */
+	struct completion orig_leader_complete;
 	struct completion dump_complete;
 
 	/* If we're requesting the dump of itself, it's performed in

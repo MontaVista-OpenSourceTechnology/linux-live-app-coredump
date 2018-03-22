@@ -150,7 +150,7 @@ static void livedump_wait(struct livedump_context *dump)
 		 * this is complete.
 		 */
 		livedump_set_task_dump(dump->orig_leader, NULL);
-		complete(&dump->dump_complete);
+		complete(&dump->orig_leader_complete);
 	}
 	put_dump(dump);
 }
@@ -285,6 +285,7 @@ static int livedump_take(struct livedump_context *dump)
 	dump->dump_manager = current;
 	livedump_set_status(dump, 0);
 	livedump_set_stage(dump, COPY_THREADS);
+	init_completion(&dump->orig_leader_complete);
 	init_completion(&dump->dump_complete);
 	mutex_init(&dump->dump_ready_lock);
 	dump->dump_ready_done = false;
@@ -305,7 +306,7 @@ static int livedump_take(struct livedump_context *dump)
 	 * original task leader, we can return before it has set its
 	 * live dump variable to NULL.
 	 */
-	wait_for_completion(&dump->dump_complete);
+	wait_for_completion(&dump->orig_leader_complete);
 	wait_for_completion(&dump->dump_complete);
 	status = livedump_status(dump);
 out:
