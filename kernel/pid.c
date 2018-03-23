@@ -40,7 +40,6 @@
 #include <linux/proc_fs.h>
 #include <linux/sched/task.h>
 #include <linux/idr.h>
-#include <linux/livedump.h>
 
 struct pid init_struct_pid = INIT_STRUCT_PID;
 
@@ -324,14 +323,13 @@ struct task_struct *pid_task(struct pid *pid, enum pid_type type)
 {
 	struct task_struct *result = NULL;
 	if (pid) {
-		hlist_for_each_entry_rcu(result, &pid->tasks[type],
-					 pids[type].node) {
-			/* Livedump tasks should be invisible. */
-			if (!livedump_task_is_clone(result))
-				return result;
-		}
+		struct hlist_node *first;
+		first = rcu_dereference_check(hlist_first_rcu(&pid->tasks[type]),
+					      lockdep_tasklist_lock_is_held());
+		if (first)
+			result = hlist_entry(first, struct task_struct, pids[(type)].node);
 	}
-	return NULL;
+	return result;
 }
 EXPORT_SYMBOL(pid_task);
 
