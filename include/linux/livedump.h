@@ -319,12 +319,12 @@ static inline int livedump_check_tsk_copy(struct task_struct *tsk,
 					  unsigned long clone_flags)
 {
 	int ret = 0;
-	struct livedump_context *dump = livedump_task_dump(tsk);
+	struct livedump_context *dump = livedump_task_dump(current);
 
 	if (task_in_livedump_stage(dump, COPY_THREADS) &&
 	    !(clone_flags & CLONE_LIVEDUMP) && (clone_flags & CLONE_THREAD)) {
 		/*
-		 * This thread is currently being livedumped and the
+		 * Current thread is currently being livedumped and the
 		 * dumping process is in COPY_THREADS stage. Make sure
 		 * the new thread is livedumped, too.
 		 */
