@@ -196,7 +196,7 @@ repeat:
 	rcu_read_unlock();
 
 	if (!livedump_task_is_clone(p))
-		/* livedump clones share the pid, so don't mess with proc.  */
+		/* livedump clones don't set up proc. */
 		proc_flush_task(p);
 
 	write_lock_irq(&tasklist_lock);
