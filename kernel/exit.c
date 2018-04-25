@@ -719,8 +719,8 @@ static void exit_notify(struct task_struct *tsk, int group_dead)
 				!ptrace_reparented(tsk) ?
 			tsk->exit_signal : SIGCHLD;
 		autoreap = do_notify_parent(tsk, sig);
-	} else if (task_in_livedump(tsk)) {
-		/* Always autoreap livedumped threads. */
+	} else if (livedump_task_is_clone(tsk)) {
+		/* Always autoreap livedumped cloned threads. */
 		autoreap = true;
 	} else if (thread_group_leader(tsk)) {
 		autoreap = thread_group_empty(tsk) &&
