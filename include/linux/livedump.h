@@ -382,8 +382,8 @@ static inline void livedump_check_tsk_exit(struct task_struct *tsk)
 		}
 
 		/* Free the dump variable if necessary. */
-		put_dump(dump);
 		livedump_set_task_dump(tsk, NULL);
+		put_dump(dump);
 	}
 }
 
