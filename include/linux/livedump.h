@@ -255,9 +255,19 @@ static inline void livedump_wait_for_dump_ready(struct livedump_context *dump,
 	}
 	mutex_unlock(&dump->dump_ready_lock);
 	if (do_wait) {
-		if (handle_sig)
+		if (handle_sig) {
+			/*
+			 * The dump variable can be deleted in the
+			 * get_signal() call in
+			 * livedump_wait_for_completion_sig(), get the
+			 * dump so that doesn't happen and cause a core dump
+			 * in the next wait_for_completion_interruptible()
+			 * call.
+			 */
+			get_dump(dump);
 			livedump_wait_for_completion_sig(&dump->dump_ready);
-		else
+			put_dump(dump);
+		} else
 			wait_for_completion(&dump->dump_ready);
 	}
 }
