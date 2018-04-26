@@ -197,7 +197,7 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 	 * Add enough to the size so that the result can be aligned.
 	 */
 	if (down_write_killable(&mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 	vdso_base = get_unmapped_area(NULL, vdso_base,
 				      (vdso_pages << PAGE_SHIFT) +
 				      ((VDSO_ALIGNMENT - 1) & PAGE_MASK),

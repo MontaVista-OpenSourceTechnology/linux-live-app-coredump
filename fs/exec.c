@@ -295,7 +295,7 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
 		return -ENOMEM;
 
 	if (down_write_killable(&mm->mmap_sem)) {
-		err = -ERESTARTSYS;
+		err = -EINTR;
 		goto err_free;
 	}
 	vma->vm_mm = mm;

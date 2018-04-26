@@ -69,7 +69,7 @@ int __sched down_write_killable(struct rw_semaphore *sem)
 
 	if (LOCK_CONTENDED_RETURN(sem, __down_write_trylock, __down_write_killable)) {
 		rwsem_release(&sem->dep_map, 1, _RET_IP_);
-		return -ERESTARTSYS;
+		return -EINTR;
 	}
 
 	rwsem_set_owner(sem);
@@ -184,7 +184,7 @@ int __sched down_write_killable_nested(struct rw_semaphore *sem, int subclass)
 
 	if (LOCK_CONTENDED_RETURN(sem, __down_write_trylock, __down_write_killable)) {
 		rwsem_release(&sem->dep_map, 1, _RET_IP_);
-		return -ERESTARTSYS;
+		return -EINTR;
 	}
 
 	rwsem_set_owner(sem);

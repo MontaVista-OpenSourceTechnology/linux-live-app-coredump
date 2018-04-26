@@ -129,7 +129,7 @@ static inline void __down_write(struct rw_semaphore *sem)
 static inline int __down_write_killable(struct rw_semaphore *sem)
 {
 	if (IS_ERR(____down_write(sem, "call_rwsem_down_write_failed_killable")))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	return 0;
 }

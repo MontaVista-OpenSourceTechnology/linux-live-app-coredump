@@ -1128,7 +1128,7 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 
 		if (type == CLEAR_REFS_MM_HIWATER_RSS) {
 			if (down_write_killable(&mm->mmap_sem)) {
-				count = -ERESTARTSYS;
+				count = -EINTR;
 				goto out_mm;
 			}
 
@@ -1149,7 +1149,7 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 					continue;
 				up_read(&mm->mmap_sem);
 				if (down_write_killable(&mm->mmap_sem)) {
-					count = -ERESTARTSYS;
+					count = -EINTR;
 					goto out_mm;
 				}
 				for (vma = mm->mmap; vma; vma = vma->vm_next) {
