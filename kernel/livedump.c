@@ -354,14 +354,17 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 	/*
 	 * Do not dump the task being ptraced, kernel thread,
 	 * or task which is exiting or handling fatal signal.
+	 * It must also be the group leader.
 	 */
 	task_lock(orig_leader);
 	if ((orig_leader->ptrace & PT_PTRACED) ||
             (!orig_leader->mm) ||
             (orig_leader->flags & PF_SIGNALED) ||
-            (orig_leader->signal->flags & SIGNAL_GROUP_EXIT))
+            (orig_leader->signal->flags & SIGNAL_GROUP_EXIT) ||
+	    orig_leader->group_leader != orig_leader)
                 ret = -EINVAL;
-	else if (task_in_livedump(orig_leader))
+	else if (livedump_task_dump(orig_leader))
+		/* leader is already in a dump or exiting. */
 		ret = -EINPROGRESS;
 	else {
 		/*
