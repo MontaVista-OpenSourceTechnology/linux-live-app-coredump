@@ -183,7 +183,13 @@ static inline void livedump_unblock_signals(sigset_t *restoreset)
 
 static inline int __task_in_livedump(struct livedump_context *dump)
 {
-	return dump != NULL;
+	/*
+	 * The dump variable for a thread group leader is set to
+	 * an error pointer when the task goes past the point
+	 * where it can be halted to complete a livedump.  That
+	 * way you can't start a livedump after that point.
+	 */
+	return dump != NULL && !IS_ERR(dump);
 }
 
 static inline int task_in_livedump(struct task_struct *tsk)
@@ -201,7 +207,7 @@ static inline int task_in_livedump_stage(struct livedump_context *dump,
 static inline int __livedump_task_is_clone_child(struct task_struct *tsk,
 						 struct livedump_context *dump)
 {
-	return (dump &&
+	return (__task_in_livedump(dump) &&
 		tsk != tsk->group_leader &&
 		dump->dumped_leader == tsk->group_leader);
 }
@@ -214,7 +220,7 @@ static inline int livedump_task_is_clone_child(struct task_struct *tsk)
 static inline int __livedump_task_is_clone(struct task_struct *tsk,
 					   struct livedump_context *dump)
 {
-	return (dump &&
+	return (__task_in_livedump(dump) &&
 		tsk->group_leader == dump->dumped_leader);
 }
 
@@ -289,10 +295,29 @@ static inline void livedump_set_dump_ready(struct livedump_context *dump)
 
 static inline void livedump_maybe_wait_clone_done(struct task_struct *tsk)
 {
-	struct livedump_context *dump = livedump_task_dump(tsk);
+	struct livedump_context *dump;
 
-	if (task_in_livedump_stage(dump, COPY_THREADS))
-		livedump_wait_for_dump_ready(dump, true);
+	if (tsk->group_leader == tsk) {
+		/*
+		 * If a group leader is exiting, make sure that a livedump
+		 * cannot be started on it.
+		 */
+restart:
+		task_lock(tsk);
+		dump = livedump_task_dump(tsk);
+		if (!dump)
+			livedump_set_task_dump(tsk, ERR_PTR(-EINPROGRESS));
+		task_unlock(tsk);
+		if (task_in_livedump_stage(dump, COPY_THREADS)) {
+			livedump_wait_for_dump_ready(dump, true);
+			goto restart;
+		}
+	} else {
+		dump = livedump_task_dump(tsk);
+		if (task_in_livedump_stage(dump, COPY_THREADS))
+			livedump_wait_for_dump_ready(dump, true);
+	}
+
 }
 
 static inline void __livedump_send_sig(struct task_struct *tsk)
@@ -315,11 +340,6 @@ static inline void livedump_signal_leader(struct task_struct *tsk)
 	spin_lock_irq(&tsk->sighand->siglock);
 	__livedump_send_sig(tsk);
 	spin_unlock_irq(&tsk->sighand->siglock);
-}
-
-static inline int livedump_is_clone(unsigned long clone_flags)
-{
-	return clone_flags & CLONE_LIVEDUMP;
 }
 
 extern int livedump_setup_clone(struct task_struct *clone,
@@ -401,7 +421,7 @@ static inline int livedump_check_signal_send(int sig, struct task_struct *tsk)
 {
 	struct livedump_context *dump = livedump_task_dump(tsk);
 
-	if (!dump)
+	if (!__task_in_livedump(dump))
 		return 1;
 
 	if (__livedump_task_is_clone_child(tsk, dump)) {
@@ -454,7 +474,6 @@ static inline void livedump_set_task_dump(struct task_struct *tsk,
 static inline void livedump_maybe_wait_clone_done(struct task_struct *tsk) { }
 static inline void livedump_handle_signal(siginfo_t *info) { }
 static inline int task_in_livedump(struct task_struct *tsk) { return 0; }
-static inline int livedump_is_clone(unsigned long clone_flags) { return 0; }
 static inline int livedump_check_tsk_copy(struct task_struct *tsk,
 				unsigned long clone_flags) { return 0; }
 static inline void livedump_check_tsk_exit(struct task_struct *tsk) { }
