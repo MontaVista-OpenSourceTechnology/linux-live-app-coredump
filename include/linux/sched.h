@@ -1729,7 +1729,8 @@ struct task_struct {
 	unsigned long	task_state_change;
 #endif
 #ifdef CONFIG_LIVEDUMP
-	struct livedump_context *livedump;
+	struct livedump_context		*livedump;
+	bool				livedump_sigpending;
 #endif
 };
 
