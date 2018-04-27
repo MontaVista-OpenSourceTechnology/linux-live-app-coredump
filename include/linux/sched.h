@@ -1102,6 +1102,7 @@ struct task_struct {
 #endif
 #ifdef CONFIG_LIVEDUMP
 	struct livedump_context		*livedump;
+	bool				livedump_sigpending;
 #endif
 
 	/*

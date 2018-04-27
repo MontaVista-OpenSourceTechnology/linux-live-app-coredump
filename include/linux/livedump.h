@@ -162,12 +162,10 @@ static inline void put_dump(struct livedump_context *dump)
 
 static inline void livedump_block_signals(sigset_t *saveset)
 {
-	/* Save original blocked set, block everything except SIGKILL
-	   which must be handled to drive dumping process. */
+	/* Save original blocked set, block everything. */
 	spin_lock_irq(&current->sighand->siglock);
 	*saveset = current->blocked;
 	sigfillset(&current->blocked);
-	sigdelset(&current->blocked, SIGKILL);
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
 }
@@ -189,7 +187,7 @@ static inline int __task_in_livedump(struct livedump_context *dump)
 	 * where it can be halted to complete a livedump.  That
 	 * way you can't start a livedump after that point.
 	 */
-	return dump != NULL && !IS_ERR(dump);
+	return !IS_ERR_OR_NULL(dump);
 }
 
 static inline int task_in_livedump(struct task_struct *tsk)
@@ -320,10 +318,12 @@ restart:
 
 }
 
-static inline void __livedump_send_sig(struct task_struct *tsk)
+static inline void __livedump_send_sig(struct task_struct *tsk, bool force)
 {
-	sigaddset(&tsk->pending.signal, SIGKILL);
-	signal_wake_up(tsk, 1);
+	tsk->livedump_sigpending = true;
+	recalc_sigpending_and_wake(tsk);
+	if (force)
+		signal_wake_up(tsk, true);
 }
 
 static inline void __livedump_signal_clone(struct task_struct *tsk,
@@ -332,13 +332,13 @@ static inline void __livedump_signal_clone(struct task_struct *tsk,
 	assert_spin_locked(&tsk->sighand->siglock);
 	atomic_inc(&dump->nr_clone_remains);
 	livedump_set_task_dump(tsk, get_dump(dump));
-	__livedump_send_sig(tsk);
+	__livedump_send_sig(tsk, false);
 }
 
 static inline void livedump_signal_leader(struct task_struct *tsk)
 {
 	spin_lock_irq(&tsk->sighand->siglock);
-	__livedump_send_sig(tsk);
+	__livedump_send_sig(tsk, true);
 	spin_unlock_irq(&tsk->sighand->siglock);
 }
 
@@ -381,7 +381,7 @@ static inline void __livedump_thread_clone_done(struct livedump_context *dump,
 		 */
 		livedump_set_stage(dump, PERFORM_DUMP);
 		if (in_lock)
-			__livedump_send_sig(dump->dumped_leader);
+			__livedump_send_sig(dump->dumped_leader, true);
 		else
 			livedump_signal_leader(dump->dumped_leader);
 	}
@@ -433,32 +433,21 @@ static inline int livedump_check_signal_send(int sig, struct task_struct *tsk)
 		if (current != dump->dumped_leader)
 			return 0;
 	} else if (__livedump_task_is_clone(tsk, dump)) {
-		/*
-		 * The clone thread group leader.  It may only receive
-		 * signals from the original thread group leader.
-		 */
-		if (current != dump->orig_leader)
-			return 0;
-	} else {
-		if (sig != SIGKILL)
-			/* Let other signals be handled normally. */
-			return 1;
-
-		if (tsk == dump->orig_leader)
-			/*
-			 * The original leader should only get SIGKILLs from
-			 * the dump manager.
-			 */
-			return current == dump->dump_manager;
-
-		/*
-		 * Other threads in the original task should only get
-		 * SIGKILLs from the original leader.
-		 */
-		return current == dump->orig_leader;
+		/* The clone thread group leader ignores all signals. */
+		return 0;
 	}
 
 	return 1;
+}
+
+static inline bool is_livedump_sigpending(struct task_struct *tsk)
+{
+	return tsk->livedump_sigpending;
+}
+
+static inline void clear_livedump_sigpending(struct task_struct *tsk)
+{
+	 tsk->livedump_sigpending = false;
 }
 
 extern void livedump_handle_signal(siginfo_t *);
@@ -482,6 +471,9 @@ static inline int livedump_task_is_clone_child(struct task_struct *tsk)
 { return 0; }
 static inline int livedump_check_signal_send(int sig, struct task_struct *tsk)
 { return 1; }
+static inline bool is_livedump_sigpending(struct task_struct *tsk)
+{ return 0; }
+static inline void clear_livedump_sigpending(struct task_struct *tsk) { }
 
 #endif /* CONFIG_LIVEDUMP */
 

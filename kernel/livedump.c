@@ -249,6 +249,10 @@ void livedump_handle_signal(siginfo_t *info)
 {
 	struct livedump_context *dump = livedump_task_dump(current);
 
+	current->livedump_sigpending = false;
+	if (!task_in_livedump(current) || livedump_task_is_clone_child(current))
+		return;
+
 	switch (livedump_stage(dump)) {
 	case COPY_THREADS:
 		livedump_clone_thread();
