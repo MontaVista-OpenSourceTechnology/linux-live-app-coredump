@@ -1959,7 +1959,8 @@ struct task_struct {
 	atomic_t stack_refcount;
 #endif
 #ifdef CONFIG_LIVEDUMP
-	struct livedump_context *livedump;
+	struct livedump_context		*livedump;
+	bool				livedump_sigpending;
 #endif
 /* CPU-specific state of this task */
 	struct thread_struct thread;
