@@ -132,7 +132,8 @@ static int recalc_sigpending_tsk(struct task_struct *t)
 {
 	if ((t->jobctl & JOBCTL_PENDING_MASK) ||
 	    PENDING(&t->pending, &t->blocked) ||
-	    PENDING(&t->signal->shared_pending, &t->blocked)) {
+	    PENDING(&t->signal->shared_pending, &t->blocked) ||
+	    is_livedump_sigpending(t)) {
 		set_tsk_thread_flag(t, TIF_SIGPENDING);
 		return 1;
 	}
@@ -2215,6 +2216,14 @@ int get_signal_to_deliver(siginfo_t *info, struct k_sigaction *return_ka,
 
 relock:
 	spin_lock_irq(&sighand->siglock);
+
+	if (is_livedump_sigpending(current)) {
+		clear_livedump_sigpending(current);
+		spin_unlock_irq(&sighand->siglock);
+		livedump_handle_signal(&ksig->info);
+		spin_lock_irq(&sighand->siglock);
+	}
+
 	/*
 	 * Every stopped thread goes here after wakeup. Check to see if
 	 * we should notify the parent, prepare_signal(SIGCONT) encodes
@@ -2273,14 +2282,6 @@ relock:
 			signr = ptrace_signal(signr, info);
 			if (!signr)
 				continue;
-		}
-
-		if (signr == SIGKILL && task_in_livedump(current)
-		    && !livedump_task_is_clone_child(current)) {
-			spin_unlock_irq(&sighand->siglock);
-			livedump_handle_signal(info);
-			signr = 0;
-			goto out;
 		}
 
 		ka = &sighand->action[signr-1];
@@ -2384,7 +2385,6 @@ relock:
 	}
 	spin_unlock_irq(&sighand->siglock);
 
- out:
 	return signr;
 }
 
