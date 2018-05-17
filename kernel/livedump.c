@@ -144,49 +144,28 @@ static struct task_struct *livedump_clone(struct livedump_context *dump,
 static void livedump_clone_leader(struct livedump_context *dump)
 {
 	struct task_struct *clone;
-	struct task_struct *p;
-	int i;
 
 	BUG_ON(current != dump->orig_leader);
 
-	atomic_set(&dump->nr_stop_remains, 0);
-	atomic_set(&dump->nr_stopped, 0);
-
-	/*
-	 * Request all the other threads to stop.  siglock protects
-	 * the thread list.
-	 */
-	spin_lock_irq(&current->sighand->siglock);
-	livedump_set_stage(dump, LIVEDUMP_WAIT_STOP);
-	for (p = next_thread(current); p != current; p = next_thread(p))
-		__livedump_signal_stop(p, dump);
-	spin_unlock_irq(&current->sighand->siglock);
-
-	i = atomic_read(&dump->nr_stop_remains);
-	if (i > 0)
-		/* Only wait if we signalled some. */
-		wait_for_completion(&dump->stop_complete);
+	livedump_wait_for_stop_done(dump);
+	livedump_set_stage(dump, LIVEDUMP_COPY_THREADS);
 
 	/* Now create the clone leader. */
 	clone = livedump_clone(dump, CLONE_PARENT);
 	if (IS_ERR(clone)) {
 		livedump_set_status(dump, PTR_ERR(clone));
+	} else {
+		dump->dumped_leader = clone;
+		livedump_set_task_dump(clone, get_dump(dump));
+	}
+
+	livedump_wake_stopped(dump);
+
+	if (IS_ERR(clone)) {
 		livedump_set_task_dump(current, NULL);
 		complete(&dump->orig_leader_complete);
 		put_dump(dump);
 		return;
-	}
-
-	dump->dumped_leader = clone;
-	livedump_set_task_dump(clone, get_dump(dump));
-
-	i = atomic_read(&dump->nr_stopped);
-	if (i > 0) {
-		/* Wake up all the waiting threads so they can clone. */
-		for (; i >= 0; i--)
-			complete(&dump->dump_leader_ready);
-
-		wait_for_completion(&dump->threads_cloned);
 	}
 
 	/*
@@ -219,6 +198,12 @@ static void livedump_clone_child(struct livedump_context *dump)
 	}
 }
 
+static inline void livedump_thread_clone_done(struct livedump_context *dump)
+{
+	if (atomic_dec_and_test(&dump->nr_stopped))
+		complete(&dump->threads_cloned);
+}
+
 /*
  * A thread that needs to be cloned needs to stop.
  */
@@ -228,7 +213,9 @@ static void livedump_handle_stop(struct livedump_context *dump)
 	livedump_stop_done(dump);
 
 	wait_for_completion(&dump->dump_leader_ready);
-	livedump_clone_child(dump);
+	if (dump->dumped_leader)
+		/* Don't clone unless first clone succeeded. */
+		livedump_clone_child(dump);
 
 	livedump_set_task_dump(current, NULL);
 	livedump_thread_clone_done(dump);
@@ -288,11 +275,11 @@ void livedump_handle_signal(siginfo_t *info)
 	}
 
 	switch (livedump_stage(dump)) {
-	case LIVEDUMP_INIT:
-		livedump_clone_leader(dump);
-		break;
 	case LIVEDUMP_WAIT_STOP:
-		livedump_handle_stop(dump);
+		if (current == dump->orig_leader)
+			livedump_clone_leader(dump);
+		else
+			livedump_handle_stop(dump);
 		break;
 	case LIVEDUMP_PERFORM_DUMP:
 		BUG_ON(!__livedump_task_is_clone(current, dump) ||
@@ -316,6 +303,35 @@ void livedump_ref_done(struct kref *ref)
 	kfree(dump);
 }
 
+/*
+ * Signal all threads in the process except the thread passed in and
+ * the original leader thread.
+ */
+static void livedump_sig_threads(struct livedump_context *dump,
+				 struct task_struct *t)
+{
+	struct task_struct *p;
+
+	/*
+	 * Request all the other threads to stop.  siglock protects
+	 * the thread list.
+	 */
+	spin_lock_irq(&t->sighand->siglock);
+	for (p = next_thread(t); p != t; p = next_thread(p)) {
+		if (p != dump->orig_leader)
+			__livedump_signal_stop(p, dump);
+	}
+	spin_unlock_irq(&t->sighand->siglock);
+}
+
+static inline void livedump_signal_leader(struct task_struct *tsk,
+					  bool force)
+{
+	spin_lock_irq(&tsk->sighand->siglock);
+	__livedump_send_sig(tsk, force);
+	spin_unlock_irq(&tsk->sighand->siglock);
+}
+
 int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 {
 	int ret = 0;
@@ -333,7 +349,7 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 			(param->core_limit && !capable(CAP_SYS_RESOURCE)))
 		return -EPERM;
 
-	dump = kmalloc(sizeof *dump, GFP_KERNEL);
+	dump = kmalloc(sizeof(*dump), GFP_KERNEL);
 	if (!dump)
 		return -ENOMEM;
 
@@ -344,12 +360,14 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 
 	/* Initialize the rest of livedump context. */
 	livedump_set_status(dump, 0);
-	livedump_set_stage(dump, LIVEDUMP_INIT);
+	livedump_set_stage(dump, LIVEDUMP_WAIT_STOP);
 	init_completion(&dump->stop_complete);
 	init_completion(&dump->dump_leader_ready);
 	init_completion(&dump->threads_cloned);
 	init_completion(&dump->orig_leader_complete);
 	init_completion(&dump->dump_complete);
+	atomic_set(&dump->nr_stop_remains, 0);
+	atomic_set(&dump->nr_stopped, 0);
 
 	/*
 	 * The parent PID and user namespace for the new
@@ -365,8 +383,7 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 
 	/*
 	 * Do not dump a task being ptraced, kernel thread, or task
-	 * which is exiting or handling fatal signal.  A task may not
-	 * dump itself.
+	 * which is exiting or handling fatal signal.
 	 */
 	write_lock_irq(&tasklist_lock);
 	orig_leader = orig_leader->group_leader;
@@ -374,8 +391,7 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 	if (orig_leader->ptrace & PT_PTRACED ||
             !orig_leader->mm ||
             orig_leader->flags & PF_SIGNALED ||
-            orig_leader->signal->flags & SIGNAL_GROUP_EXIT ||
-	    current->group_leader == orig_leader)
+            orig_leader->signal->flags & SIGNAL_GROUP_EXIT)
                 ret = -EINVAL;
 	else if (livedump_task_dump(orig_leader))
 		/* leader is already in a dump or exiting. */
@@ -387,15 +403,38 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 	if (ret)
 		goto out_err;
 
-	/* We may start the dump. */
-	livedump_signal_leader(orig_leader);
+	if (current->group_leader == orig_leader) {
+		livedump_sig_threads(dump, current);
+
+		if (current == orig_leader) {
+			/*
+			 * We are the original leader, just start the
+			 * process directly.
+			 */
+			livedump_clone_leader(dump);
+		} else {
+			/*
+			 * We are a non-leader of the original process,
+			 * pretend like we were signaled and wake the
+			 * leader.
+			 */
+			livedump_setup_stop_task(current, dump);
+			livedump_signal_leader(orig_leader, false);
+			livedump_handle_stop(dump);
+		}
+	} else {
+		livedump_sig_threads(dump, orig_leader);
+
+		/* Tell the leader to start the dump. */
+		livedump_signal_leader(orig_leader, false);
+	}
 
 	wait_for_completion(&dump->orig_leader_complete);
 	ret = livedump_status(dump);
 	if (!ret) {
 		/* All threads are cloned */
 		livedump_set_stage(dump, LIVEDUMP_PERFORM_DUMP);
-		livedump_signal_leader(dump->dumped_leader);
+		livedump_signal_leader(dump->dumped_leader, true);
 
 		wait_for_completion(&dump->dump_complete);
 		ret = livedump_status(dump);
