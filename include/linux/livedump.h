@@ -299,8 +299,8 @@ static inline void livedump_handle_exit(struct task_struct *tsk)
 			livedump_wake_stopped(dump);
 			livedump_set_status(dump, -ESRCH);
 			complete(&dump->orig_leader_complete);
-		} else if (!livedump_task_is_clone(tsk) &&
-			   livedump_stage(dump) == LIVEDUMP_WAIT_STOP) {
+		} else if (livedump_stage(dump) == LIVEDUMP_WAIT_STOP &&
+			   !livedump_task_is_clone(tsk)) {
 			/*
 			 * If livedumping and in WAIT_STOP state,
 			 * that means this thread is expected to stop

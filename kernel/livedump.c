@@ -145,8 +145,6 @@ static void livedump_clone_leader(struct livedump_context *dump)
 {
 	struct task_struct *clone;
 
-	BUG_ON(current != dump->orig_leader);
-
 	livedump_wait_for_stop_done(dump);
 	livedump_set_stage(dump, LIVEDUMP_COPY_THREADS);
 
@@ -173,6 +171,7 @@ static void livedump_clone_leader(struct livedump_context *dump)
 	 * variable to NULL, this avoids starting another dump before
 	 * all the threads in this process are ready.
 	 */
+	dump->orig_leader = NULL;
 	livedump_set_task_dump(current, NULL);
 	put_dump(dump);
 
@@ -183,15 +182,13 @@ static void livedump_clone_child(struct livedump_context *dump)
 {
 	struct task_struct *clone;
 
-	BUG_ON(current == dump->orig_leader);
-
 	clone = livedump_clone(dump,
 			       CLONE_THREAD | CLONE_SIGHAND | CLONE_VM);
 	if (IS_ERR(clone)) {
 		/*
 		 * Save first error we've encountered. Other threads
-		 * may have failed to clone themselves too, but their
-		 * errors will be discarded.
+		 * may fail to clone themselves too, but their errors
+		 * will be discarded.
 		 */
 		if (!livedump_status(dump))
 			livedump_set_status(dump, PTR_ERR(clone));
@@ -237,20 +234,21 @@ static void livedump_perform_dump(siginfo_t *info,
 
 	current->flags |= PF_SIGNALED;
 
-	/*
-	 * Everything looks valid, may dump core. All signals are
-	 * blocked to avoid magic -ERESTARTSYS errors comes due to I/O
-	 * via NFS.
-	 */
-	sigfillset(&blocked);
-	sigprocmask(SIG_BLOCK, &blocked, NULL);
-	flush_signals(current);
+	if (!livedump_status(dump)) {
+		/*
+		 * Everything looks valid, may dump core. All signals
+		 * are blocked to avoid magic -ERESTARTSYS errors
+		 * comes due to I/O via NFS.
+		 */
+		sigfillset(&blocked);
+		sigprocmask(SIG_BLOCK, &blocked, NULL);
+		flush_signals(current);
 
-	status = do_coredump(info);
+		status = do_coredump(info);
 
-	livedump_set_stage(dump, LIVEDUMP_DUMP_COMPLETE);
-	livedump_set_status(dump, status);
-
+		livedump_set_stage(dump, LIVEDUMP_DUMP_COMPLETE);
+		livedump_set_status(dump, status);
+	}
 	complete(&dump->dump_complete);
 	do_group_exit(SIGKILL);
 	/* NOTREACHED */
@@ -355,7 +353,6 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 
 	dump->param = *param;
 	kref_init(&dump->ref);
-	get_dump(dump);
 	dump->dumped_leader = NULL;
 
 	/* Initialize the rest of livedump context. */
@@ -397,7 +394,7 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 		/* leader is already in a dump or exiting. */
 		ret = -EINPROGRESS;
 	else
-		livedump_set_task_dump(orig_leader, dump);
+		livedump_set_task_dump(orig_leader, get_dump(dump));
 
 	write_unlock_irq(&tasklist_lock);
 	if (ret)
@@ -431,11 +428,18 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 
 	wait_for_completion(&dump->orig_leader_complete);
 	ret = livedump_status(dump);
-	if (!ret) {
-		/* All threads are cloned */
+
+	if (dump->dumped_leader) {
+		/*
+		 * If the dumped leader was created, make sure to wake
+		 * it up no matter what.
+		 */
 		livedump_set_stage(dump, LIVEDUMP_PERFORM_DUMP);
 		livedump_signal_leader(dump->dumped_leader, true);
+	}
 
+	if (!ret) {
+		/* Wait for the dumped leader to save the core. */
 		wait_for_completion(&dump->dump_complete);
 		ret = livedump_status(dump);
 	}
