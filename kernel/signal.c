@@ -2417,6 +2417,8 @@ void exit_signals(struct task_struct *tsk)
 	 */
 	tsk->flags |= PF_EXITING;
 
+	livedump_handle_exit(tsk);
+
 	threadgroup_change_end(tsk);
 
 	if (!signal_pending(tsk))
