@@ -100,7 +100,7 @@ static void __exit_signal(struct task_struct *tsk)
 					lockdep_tasklist_lock_is_held());
 	spin_lock(&sighand->siglock);
 
-	livedump_check_tsk_exit(tsk);
+	livedump_handle_exit(tsk);
 
 #ifdef CONFIG_POSIX_TIMERS
 	posix_cpu_timers_exit(tsk);
@@ -773,7 +773,6 @@ void __noreturn do_exit(long code)
 	struct task_struct *tsk = current;
 	int group_dead;
 
-	livedump_maybe_wait_clone_done(tsk);
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);
 
@@ -956,7 +955,6 @@ do_group_exit(int exit_code)
 	struct signal_struct *sig = current->signal;
 
 	BUG_ON(exit_code & 0x80); /* core dumps don't get here */
-	livedump_maybe_wait_clone_done(current);
 	if (signal_group_exit(sig))
 		exit_code = sig->group_exit_code;
 	else if (!thread_group_empty(current)) {
