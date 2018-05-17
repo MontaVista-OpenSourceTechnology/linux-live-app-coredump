@@ -93,7 +93,7 @@ static void __exit_signal(struct task_struct *tsk)
 					lockdep_tasklist_lock_is_held());
 	spin_lock(&sighand->siglock);
 
-	livedump_check_tsk_exit(tsk);
+	livedump_handle_exit(tsk);
 
 	posix_cpu_timers_exit(tsk);
 	if (group_dead) {
@@ -664,7 +664,6 @@ void do_exit(long code)
 	int group_dead;
 	TASKS_RCU(int tasks_rcu_i);
 
-	livedump_maybe_wait_clone_done(tsk);
 	profile_task_exit(tsk);
 
 	WARN_ON(blk_needs_flush_plug(tsk));
@@ -863,7 +862,6 @@ do_group_exit(int exit_code)
 	struct signal_struct *sig = current->signal;
 
 	BUG_ON(exit_code & 0x80); /* core dumps don't get here */
-	livedump_maybe_wait_clone_done(current);
 	if (signal_group_exit(sig))
 		exit_code = sig->group_exit_code;
 	else if (!thread_group_empty(current)) {
