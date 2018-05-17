@@ -24,7 +24,6 @@
 
 /* Dumping process stages.  */
 typedef enum {
-	LIVEDUMP_INIT,		/* Waking the original thread group leader. */
 	LIVEDUMP_WAIT_STOP,	/* Waiting for all original threads to stop. */
 	LIVEDUMP_COPY_THREADS,
 	LIVEDUMP_PERFORM_DUMP,
@@ -76,7 +75,11 @@ struct livedump_context {
 
 	/* Number of threads still in the process of being stopped. */
 	atomic_t nr_stop_remains;
+
+	/* Total number of threads that are currently stopped. */
 	atomic_t nr_stopped;
+
+	/* Tell the original leader that threads are stopped. */
 	struct completion stop_complete;
 
 	/*
@@ -93,11 +96,6 @@ struct livedump_context {
 
 	/* Tell the main thread the dump is complete. */
 	struct completion dump_complete;
-
-	/* If we're requesting the dump of itself, it's performed in
-	   the context of helper kernel thread. This is used to wait
-	   until this thread completes. */
-	struct completion thread_exit;
 
 	/* Parameters from the user. */
 	struct livedump_param param;
@@ -233,34 +231,51 @@ static inline void __livedump_send_sig(struct task_struct *tsk, bool force)
 		signal_wake_up(tsk, true);
 }
 
-static inline void __livedump_signal_stop(struct task_struct *tsk,
-					   struct livedump_context *dump)
+static void livedump_setup_stop_task(struct task_struct *tsk,
+				     struct livedump_context *dump)
 {
-	assert_spin_locked(&tsk->sighand->siglock);
 	atomic_inc(&dump->nr_stop_remains);
 	livedump_set_task_dump(tsk, get_dump(dump));
-	__livedump_send_sig(tsk, false);
 }
 
-static inline void livedump_signal_leader(struct task_struct *tsk)
+static inline void __livedump_signal_stop(struct task_struct *tsk,
+					  struct livedump_context *dump)
 {
-	spin_lock_irq(&tsk->sighand->siglock);
-	__livedump_send_sig(tsk, true);
-	spin_unlock_irq(&tsk->sighand->siglock);
+	assert_spin_locked(&tsk->sighand->siglock);
+	livedump_setup_stop_task(tsk, dump);
+	__livedump_send_sig(tsk, false);
 }
 
 static inline void livedump_stop_done(struct livedump_context *dump)
 {
-	if (atomic_dec_and_test(&dump->nr_stop_remains)) {
-		livedump_set_stage(dump, LIVEDUMP_COPY_THREADS);
+	if (atomic_dec_and_test(&dump->nr_stop_remains))
 		complete(&dump->stop_complete);
-	}
 }
 
-static inline void livedump_thread_clone_done(struct livedump_context *dump)
+static inline void livedump_wait_for_stop_done(struct livedump_context *dump)
 {
-	if (atomic_dec_and_test(&dump->nr_stopped))
-		complete(&dump->threads_cloned);
+	int i = atomic_read(&dump->nr_stop_remains);
+
+	if (i > 0)
+		/* Only wait if we signalled some. */
+		wait_for_completion(&dump->stop_complete);
+}
+
+static inline void livedump_wake_stopped(struct livedump_context *dump)
+{
+	int i = atomic_read(&dump->nr_stopped);
+
+	if (i > 0) {
+		/*
+		 * Wake up all the waiting threads so they can clone,
+		 * or just exit if there was an error in the first
+		 * clone.
+		 */
+		for (; i >= 0; i--)
+			complete(&dump->dump_leader_ready);
+
+		wait_for_completion(&dump->threads_cloned);
+	}
 }
 
 /*
@@ -280,6 +295,8 @@ static inline void livedump_handle_exit(struct task_struct *tsk)
 			 * the dump signal.  Just have the dump return
 			 * an error.
 			 */
+			livedump_wait_for_stop_done(dump);
+			livedump_wake_stopped(dump);
 			livedump_set_status(dump, -ESRCH);
 			complete(&dump->orig_leader_complete);
 		} else if (!livedump_task_is_clone(tsk) &&
