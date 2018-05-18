@@ -359,7 +359,7 @@ static inline int livedump_check_signal_send(int sig, struct task_struct *tsk)
 }
 
 extern void livedump_handle_signal(siginfo_t *);
-extern int do_livedump(struct task_struct *leader,
+extern int do_livedump(struct task_struct *tsk,
 		       struct livedump_param *param);
 
 #else
