@@ -110,46 +110,34 @@ struct livedump_context {
 static inline void livedump_set_status(struct livedump_context *dump,
 				       long status)
 {
-	smp_wmb();
-	WRITE_ONCE(dump->status, status);
+	dump->status = status;
 }
 
 static inline int livedump_status(struct livedump_context *dump)
 {
-	int val = READ_ONCE(dump->status);
-
-	smp_rmb();
-	return val;
+	return dump->status;
 }
 
 static inline void livedump_set_stage(struct livedump_context *dump,
 				      livedump_stage_t stage)
 {
-	smp_wmb();
-	WRITE_ONCE(dump->stage, stage);
+	dump->stage = stage;
 }
 
 static inline livedump_stage_t livedump_stage(struct livedump_context *dump)
 {
-	int val = READ_ONCE(dump->stage);
-
-	smp_rmb();
-	return val;
+	return dump->stage;
 }
 
 static inline void livedump_set_task_dump(struct task_struct *tsk,
 					  struct livedump_context *dump)
 {
-	smp_wmb();
-	WRITE_ONCE(tsk->livedump, dump);
+	tsk->livedump = dump;
 }
 
 static inline struct livedump_context *livedump_task_dump(struct task_struct *tsk)
 {
-	struct livedump_context *val = READ_ONCE(tsk->livedump);
-
-	smp_rmb();
-	return val;
+	return tsk->livedump;
 }
 
 extern void livedump_ref_done(struct kref *ref);
@@ -382,6 +370,7 @@ static inline void livedump_set_task_dump(struct task_struct *tsk,
 					  struct livedump_context *dump) { }
 static inline void livedump_handle_signal(siginfo_t *info) { }
 static inline int task_in_livedump(struct task_struct *tsk) { return 0; }
+static inline void livedump_handle_exit(struct task_struct *tsk) { }
 static inline int livedump_check_tsk_copy(struct task_struct *tsk,
 				unsigned long clone_flags) { return 0; }
 static inline void livedump_check_tsk_exit(struct task_struct *tsk) { }
