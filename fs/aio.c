@@ -507,7 +507,7 @@ static int aio_setup_ring(struct kioctx *ctx)
 	if (down_write_killable(&mm->mmap_sem)) {
 		ctx->mmap_size = 0;
 		aio_free_ring(ctx);
-		return -ERESTARTSYS;
+		return -EINTR;
 	}
 
 	ctx->mmap_base = do_mmap_pgoff(ctx->aio_ring_file, 0, ctx->mmap_size,

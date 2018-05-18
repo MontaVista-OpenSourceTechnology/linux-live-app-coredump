@@ -681,7 +681,7 @@ static __must_check int do_mlock(unsigned long start, size_t len, vm_flags_t fla
 	locked = len >> PAGE_SHIFT;
 
 	if (down_write_killable(&current->mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	locked += current->mm->locked_vm;
 	if ((locked > lock_limit) && (!capable(CAP_IPC_LOCK))) {
@@ -735,7 +735,7 @@ SYSCALL_DEFINE2(munlock, unsigned long, start, size_t, len)
 	start &= PAGE_MASK;
 
 	if (down_write_killable(&current->mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 	ret = apply_vma_lock_flags(start, len, 0);
 	up_write(&current->mm->mmap_sem);
 
@@ -806,7 +806,7 @@ SYSCALL_DEFINE1(mlockall, int, flags)
 	lock_limit >>= PAGE_SHIFT;
 
 	if (down_write_killable(&current->mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	ret = -ENOMEM;
 	if (!(flags & MCL_CURRENT) || (current->mm->total_vm <= lock_limit) ||
@@ -824,7 +824,7 @@ SYSCALL_DEFINE0(munlockall)
 	int ret;
 
 	if (down_write_killable(&current->mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 	ret = apply_mlockall_flags(0);
 	up_write(&current->mm->mmap_sem);
 	return ret;

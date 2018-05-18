@@ -1648,7 +1648,7 @@ i915_gem_mmap_ioctl(struct drm_device *dev, void *data,
 
 		if (down_write_killable(&mm->mmap_sem)) {
 			i915_gem_object_put_unlocked(obj);
-			return -ERESTARTSYS;
+			return -EINTR;
 		}
 		vma = find_vma(mm, addr);
 		if (vma)

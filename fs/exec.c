@@ -269,7 +269,7 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
 		return -ENOMEM;
 
 	if (down_write_killable(&mm->mmap_sem)) {
-		err = -ERESTARTSYS;
+		err = -EINTR;
 		goto err_free;
 	}
 	vma->vm_mm = mm;
@@ -706,7 +706,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	bprm->exec -= stack_shift;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	vm_flags = VM_STACK_FLAGS;
 

@@ -187,7 +187,7 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 	bool populate;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 #ifdef CONFIG_COMPAT_BRK
 	/*
@@ -2670,7 +2670,7 @@ int vm_munmap(unsigned long start, size_t len)
 	struct mm_struct *mm = current->mm;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	ret = do_munmap(mm, start, len);
 	up_write(&mm->mmap_sem);
@@ -2685,7 +2685,7 @@ SYSCALL_DEFINE2(munmap, unsigned long, addr, size_t, len)
 
 	profile_munmap(addr);
 	if (down_write_killable(&mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 	ret = do_munmap(mm, addr, len);
 	up_write(&mm->mmap_sem);
 	return ret;
@@ -2721,7 +2721,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 		return ret;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	vma = find_vma(mm, start);
 
@@ -2896,7 +2896,7 @@ int vm_brk(unsigned long addr, unsigned long len)
 	bool populate;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	ret = do_brk(addr, len);
 	populate = ((mm->def_flags & VM_LOCKED) != 0);

@@ -385,7 +385,7 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	reqprot = prot;
 
 	if (down_write_killable(&current->mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	/*
 	 * If userspace did not allocate the pkey, do not let

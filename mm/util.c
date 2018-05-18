@@ -301,7 +301,7 @@ unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 	ret = security_mmap_file(file, prot, flag);
 	if (!ret) {
 		if (down_write_killable(&mm->mmap_sem))
-			return -ERESTARTSYS;
+			return -EINTR;
 		ret = do_mmap_pgoff(file, addr, len, prot, flag, pgoff,
 				    &populate);
 		up_write(&mm->mmap_sem);

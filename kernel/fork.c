@@ -561,7 +561,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 
 	uprobe_start_dup_mmap();
 	if (down_write_killable(&oldmm->mmap_sem)) {
-		retval = -ERESTARTSYS;
+		retval = -EINTR;
 		goto fail_uprobe_end;
 	}
 	flush_cache_dup_mm(oldmm);

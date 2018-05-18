@@ -1203,7 +1203,7 @@ long do_shmat(int shmid, char __user *shmaddr, int shmflg, ulong *raddr,
 		goto out_fput;
 
 	if (down_write_killable(&current->mm->mmap_sem)) {
-		err = -ERESTARTSYS;
+		err = -EINTR;
 		goto out_fput;
 	}
 
@@ -1278,7 +1278,7 @@ SYSCALL_DEFINE1(shmdt, char __user *, shmaddr)
 		return retval;
 
 	if (down_write_killable(&mm->mmap_sem))
-		return -ERESTARTSYS;
+		return -EINTR;
 
 	/*
 	 * This function tries to be smart and unmap shm segments that
