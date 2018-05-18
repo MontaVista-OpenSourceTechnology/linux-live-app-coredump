@@ -363,10 +363,11 @@ static inline void livedump_signal_leader(struct task_struct *tsk,
 	spin_unlock_irq(&tsk->sighand->siglock);
 }
 
-int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
+int do_livedump(struct task_struct *tsk, struct livedump_param *param)
 {
 	int ret = 0;
 	struct livedump_context *dump;
+	struct task_struct *orig_leader;
 
 	if (param->sched_nice < -20 ||
 			param->sched_nice > 19 ||
@@ -416,7 +417,7 @@ int do_livedump(struct task_struct *orig_leader, struct livedump_param *param)
 	 * which is exiting or handling fatal signal.
 	 */
 	write_lock_irq(&tasklist_lock);
-	orig_leader = orig_leader->group_leader;
+	orig_leader = tsk->group_leader;
 	dump->orig_leader = orig_leader;
 	if (orig_leader->ptrace & PT_PTRACED ||
             !orig_leader->mm ||
