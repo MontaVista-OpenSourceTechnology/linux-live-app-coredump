@@ -68,6 +68,13 @@ int livedump_setup_clone(struct task_struct *clone,
 	clone->livedump_sigpending = true;
 
 	/*
+	 * The clone is done with all signals blocked so there is no
+	 * error caused by a signal pending in the original thread.
+	 * But SIGKILL is needed to take the coredump, so re-add it.
+	 */
+	sigdelset(&clone->blocked, SIGKILL);
+
+	/*
 	 * Switch over to the dumper leader's mm, group, signal, and sighand
 	 * structures.
 	 */
@@ -113,6 +120,25 @@ int livedump_setup_clone(struct task_struct *clone,
 	return 0;
 }
 
+static void livedump_block_signals(sigset_t *saveset)
+{
+	/* Save original blocked set, block everything. */
+	spin_lock_irq(&current->sighand->siglock);
+	*saveset = current->blocked;
+	sigfillset(&current->blocked);
+	recalc_sigpending();
+	spin_unlock_irq(&current->sighand->siglock);
+}
+
+static void livedump_unblock_signals(sigset_t *restoreset)
+{
+        /* Restore original blocking set. */
+	spin_lock_irq(&current->sighand->siglock);
+	current->blocked = *restoreset;
+	recalc_sigpending();
+	spin_unlock_irq(&current->sighand->siglock);
+}
+
 /*
  * Copy current task_struct, make clone suitable for dumping.
  */
@@ -122,15 +148,22 @@ static struct task_struct *livedump_clone(struct livedump_context *dump,
 	/* We use the same pid as the cloned thread. */
 	struct pid *pid, *opid = get_task_pid(current, PIDTYPE_PID);
 	struct task_struct *clone;
+	sigset_t saveset;
 
 	pid = alloc_pid_nr(dump->pid_ns, pid_vnr(opid));
 	put_pid(opid);
 	if (IS_ERR(pid))
 		return ERR_PTR(PTR_ERR(pid));
 
+	/*
+	 * copy_process() will error if any signals are pending for the
+	 * thread.  So make sure no signals are pending.
+	 */
+	livedump_block_signals(&saveset);
 	clone = copy_process(CLONE_LIVEDUMP | clone_flags,
 			     KSTK_ESP(current), 0, NULL, pid, 0, 0,
 			     NUMA_NO_NODE);
+	livedump_unblock_signals(&saveset);
 	if (IS_ERR(clone))
 		free_pid(pid);
 
