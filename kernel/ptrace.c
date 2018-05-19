@@ -1052,143 +1052,35 @@ static struct task_struct *ptrace_get_task_struct(pid_t pid)
 #endif
 
 #ifdef CONFIG_LIVEDUMP
-static int livedump_dumper_thread(void *arg)
-{
-	struct livedump_context *dump = arg;
-
-	/* Block all signals just to be safe. */
-	spin_lock_irq(&current->sighand->siglock);
-	sigfillset(&current->blocked);
-	recalc_sigpending();
-	spin_unlock_irq(&current->sighand->siglock);
-	livedump_take(dump);
-	complete_and_exit(&dump->thread_exit, 0);
-}
-
 long ptrace_livedump(struct task_struct *tsk,
 		     struct livedump_param __user *param)
 {
-	int status = 0;
-	struct livedump_context *dump;
+	int ret;
+	struct livedump_param lparam;
 	struct task_struct *leader;
 
-	read_lock(&tasklist_lock);
+	if (param) {
+		if (copy_from_user(&lparam, param, sizeof(lparam)))
+			return -EFAULT;
+	} else {
+		init_livedump_param(&lparam);
+	}
+
+	rcu_read_lock();
 	leader = tsk->group_leader;
 	BUG_ON(!leader);
 	get_task_struct(leader);
-	read_unlock(&tasklist_lock);
+	rcu_read_unlock();
 
 	/* FIXME - better security check here ? */
-	if (!ptrace_check_attach(leader, 0)) {
-		status = -EPERM;
-		goto exit;
-	}
-
-	/*
-	 * Do not dump the task being ptraced, kernel thread,
-	 * task which is a clone created for live dumping,
-	 * or task which is exiting or handling fatal signal.
-	 */
-	task_lock(leader);
-	if ((leader->ptrace & PT_PTRACED) ||
-            (!leader->mm) ||
-            unlikely(leader->dump) ||
-            (leader->flags & PF_SIGNALED) ||
-            (leader->signal->flags & SIGNAL_GROUP_EXIT))
-                status = -EINVAL;
-	else if (leader->extra_flags & PFE_LIVEDUMP)
-		status = -EINPROGRESS;
+	if (!ptrace_check_attach(leader, 0))
+		ret = -EPERM;
 	else
-		leader->extra_flags |= PFE_LIVEDUMP;
-	task_unlock(leader);
-	if (status)
-		goto exit;
+		ret = do_livedump(leader, &lparam);
 
-	dump = kmalloc(sizeof *dump, GFP_KERNEL);
-	if (unlikely(!dump)) {
-		status = -ENOMEM;
-		goto exit_flag;
-	}
-
-	if (param) {
-		if (copy_from_user(&dump->param, param, sizeof(dump->param)))
-			status = -EFAULT;
-		else if (dump->param.sched_nice < -20 ||
-			 dump->param.sched_nice > 19 ||
-			 dump->param.io_prio < 0 ||
-			 dump->param.io_prio >= IOPRIO_BE_NR ||
-			 dump->param.oom_adj < OOM_DISABLE ||
-			 dump->param.oom_adj > OOM_ADJUST_MAX ||
-			 dump->param.core_limit > RLIM_INFINITY)
-			status = -EINVAL;
-		else if (((dump->param.sched_nice < 0) && !capable(CAP_SYS_NICE)) ||
-			 (dump->param.core_limit && !capable(CAP_SYS_RESOURCE)))
-			status = -EPERM;
-	} else {
-		/* Make it ultra-low priority by default. */
-		dump->param.sched_nice = 19;
-		dump->param.io_prio = 7;
-		dump->param.oom_adj = OOM_ADJUST_MAX;
-		/* Zero means using default (inherited) value. */
-		dump->param.core_limit = 0;
-	}
-
-	if (unlikely(status)) {
-		kfree(dump);
-		goto exit_flag;
-	}
-	kref_init(&dump->ref);
-	dump->origin = leader;
-	dump->leader = NULL;
-
-	/* We may start the dump. */
-	if (unlikely(current->group_leader == leader)) {
-		struct task_struct *dumper;
-
-		/*
-		 * Current is a member of the thread group lead by the
-		 * dumped task.  Since the task can't dump itself nor
-		 * it's leader, a special kernel thread (dumper) will do
-		 * it.
-		 */
-		init_completion(&dump->thread_exit);
-		dumper = kthread_run(livedump_dumper_thread, dump, "dump_%s",
-				     current->comm);
-		if (IS_ERR(dumper)) {
-			status = PTR_ERR(dumper);
-		} else {
-			sigset_t set;
-
-			livedump_block_signals(&set);
-			do {
-				struct ksignal ks;
-				/*
-				 * Wait for dumper thread. This wait
-				 * will be interrupted by the SIGKILL
-				 * sent by dumper.
-				 */
-				if (!wait_for_completion_interruptible(&dump->thread_exit))
-					break;
-				/*
-				 * Handling signal gives dumping stuff
-				 * a chance to do it's job.
-				 */
-				get_signal(&ks);
-			} while (1);
-			status = livedump_status(dump);
-			livedump_unblock_signals(&set);
-		}
-	} else
-		/*
-		 * When current and leader are not in the same
-		 * thread group, things are much easier...
-		 */
-		status = livedump_take(dump);
-exit_flag:
-	leader->extra_flags &= ~PFE_LIVEDUMP;
-exit:
 	put_task_struct(leader);
-	return status;
+
+	return ret;
 }
 #endif /* CONFIG_LIVEDUMP */
 

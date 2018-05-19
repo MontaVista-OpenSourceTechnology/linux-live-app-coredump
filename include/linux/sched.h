@@ -1818,7 +1818,7 @@ struct task_struct {
 #endif
 	int pagefault_disabled;
 #ifdef CONFIG_LIVEDUMP
-	struct livedump_context *dump;
+	struct livedump_context *livedump;
 #endif
 /* CPU-specific state of this task */
 	struct thread_struct thread;
