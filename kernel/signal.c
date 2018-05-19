@@ -1054,17 +1054,8 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 
 	assert_spin_locked(&t->sighand->siglock);
 
-#ifdef CONFIG_LIVEDUMP
-	if (unlikely(t->group_leader->extra_flags & PFE_LIVEDUMP)) {
-		/* We're doing live dump, do not receive alien signals. */
-		if (sig != SIGKILL)
-			return 0;
-		if (!thread_group_leader(t) && !in_livedump(t, COPY_THREADS))
-			/* For the thread, we're expecting SIGKILL from
-			   cloning group leader. This is not the one. */
-			return 0;
-	}
-#endif
+	if (!livedump_check_signal_send(sig, t))
+		return 0;
 
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t,
@@ -1154,12 +1145,6 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 out_set:
 	signalfd_notify(t, sig);
 	sigaddset(&pending->signal, sig);
-#ifdef CONFIG_LIVEDUMP
-	if (unlikely(t->dump)) {
-		signal_wake_up(t, 1);
-		goto ret;
-	}
-#endif
 	complete_signal(sig, t, group);
 ret:
 	trace_signal_generate(sig, info, t, group, result);
@@ -1218,7 +1203,7 @@ __group_send_sig_info(int sig, struct siginfo *info, struct task_struct *p)
 	return send_signal(sig, info, p, 1);
 }
 
-int
+static int
 specific_send_sig_info(int sig, struct siginfo *info, struct task_struct *t)
 {
 	return send_signal(sig, info, t, 0);
@@ -2290,25 +2275,13 @@ relock:
 				continue;
 		}
 
-#ifdef CONFIG_LIVEDUMP
-		if (signr == SIGKILL) {
-			if (in_livedump(current, COPY_LEADER)) {
-				spin_unlock_irq(&sighand->siglock);
-				livedump_clone_leader();
-				signr = 0;
-				goto exiting;
-			} else if (in_livedump(current, COPY_THREADS)) {
-				spin_unlock_irq(&sighand->siglock);
-				livedump_clone_thread();
-				signr = 0;
-				goto exiting;
-			} else if (in_livedump(current, PERFORM_DUMP) &&
-				   thread_group_leader(current)) {
-				spin_unlock_irq(&sighand->siglock);
-				livedump_perform_dump(info);
-			}
+		if (signr == SIGKILL && task_in_livedump(current)
+		    && !livedump_task_is_clone_child(current)) {
+			spin_unlock_irq(&sighand->siglock);
+			livedump_handle_signal(info);
+			signr = 0;
+			goto out;
 		}
-#endif /* CONFIG_LIVEDUMP */
 
 		ka = &sighand->action[signr-1];
 
@@ -2410,7 +2383,8 @@ relock:
 		/* NOTREACHED */
 	}
 	spin_unlock_irq(&sighand->siglock);
- exiting:
+
+ out:
 	return signr;
 }
 

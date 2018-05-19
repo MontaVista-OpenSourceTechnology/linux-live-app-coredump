@@ -1039,7 +1039,6 @@ struct task_struct {
 	void *stack;
 	atomic_t usage;
 	unsigned int flags;	/* per process flags, defined below */
-	unsigned int extra_flags;
 	unsigned int ptrace;
 
 #ifdef CONFIG_SMP
@@ -1421,7 +1420,7 @@ struct task_struct {
 	unsigned int	sequential_io_avg;
 #endif
 #ifdef CONFIG_LIVEDUMP
-	struct livedump_context *dump;
+	struct livedump_context *livedump;
 #endif
 };
 
@@ -1645,9 +1644,6 @@ extern void thread_group_cputime_adjusted(struct task_struct *p, cputime_t *ut, 
 #define PF_MEMPOLICY	0x10000000	/* Non-default NUMA mempolicy */
 #define PF_MUTEX_TESTER	0x20000000	/* Thread belongs to the rt mutex tester */
 #define PF_FREEZER_SKIP	0x40000000	/* Freezer should not count it as freezable */
-
-/* Flags in the extra_flags field */
-#define PFE_LIVEDUMP	0x00001000	/* doing live dump */
 
 /*
  * Only the _current_ task can read/write to tsk->flags, but other
