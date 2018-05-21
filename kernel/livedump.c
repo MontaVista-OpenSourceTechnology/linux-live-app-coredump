@@ -47,6 +47,7 @@
 #include <linux/coredump.h>
 #include <linux/kthread.h>
 #include <linux/ptrace.h>
+#include <linux/pid_namespace.h>
 
 #include <asm/mmu_context.h>
 #include <asm/processor.h>
