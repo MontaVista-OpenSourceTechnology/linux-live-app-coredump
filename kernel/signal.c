@@ -2220,7 +2220,7 @@ relock:
 	if (is_livedump_sigpending(current)) {
 		clear_livedump_sigpending(current);
 		spin_unlock_irq(&sighand->siglock);
-		livedump_handle_signal(&ksig->info);
+		livedump_handle_signal(info);
 		spin_lock_irq(&sighand->siglock);
 	}
 
