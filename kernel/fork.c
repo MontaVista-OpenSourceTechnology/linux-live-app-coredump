@@ -1449,6 +1449,9 @@ struct task_struct *copy_process(unsigned long clone_flags,
 		goto bad_fork_free_pid;
 	}
 
+	if (clone_flags & CLONE_THREAD)
+		p->group_leader = current->group_leader;
+
 	retval = livedump_check_tsk_copy(p, clone_flags);
 	if (retval)
 		goto bad_fork_free_pid;
@@ -1457,7 +1460,6 @@ struct task_struct *copy_process(unsigned long clone_flags,
 		current->signal->nr_threads++;
 		atomic_inc(&current->signal->live);
 		atomic_inc(&current->signal->sigcnt);
-		p->group_leader = current->group_leader;
 		list_add_tail_rcu(&p->thread_group, &p->group_leader->thread_group);
 	}
 
