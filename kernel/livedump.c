@@ -1,24 +1,21 @@
 /*
  * kernel/livedump.c
  *
- * Core of live application dump.
+ * Coredump of a live application
  *
- * Actual dumping is initiated by sending SIGKILL to the thread
- * group leader, which is done by ptrace(PT_LIVEDUMP, ...). The
- * rest is signal-driven too, and performed by appropriate calls
- * from get_signal_to_deliver().
+ * Actual dumping is initiated by sending special signal to the thread
+ * group leader, The rest is driven by the special signal, too, and
+ * performed by appropriate calls from get_signal().
  *
  * The various interactions are rather convoluted, but here's the big
  * picture.  In the following, O is the requesting process, T is the
  * task leader being cloned (orig_leader), t is a thread being cloned,
  * C is the clone leader (dumped_leader) and c is a clone thread.
  *
- *
  * O: allocate dump
  * O: T->livedump = dump
+ * O: for each (t) t->livedump = dump, signal(t)
  * O: signal(T)
- * O: wait for original thread leader complete
- * T: for each (t) t->livedump = dump, signal(t)
  * T: wait for all threads stopped
  * T: C = clone(T) (also clones mm)
  * T: for each (t) wake up
@@ -27,7 +24,7 @@
  * t: Return to normal operation
  * T: Tell O that the clone is ready
  * T: Return to normal operation
- * O: Wake up O
+ * O: wake C
  * O: wait for dump_complete
  * C: dump core
  * C: wake O with dump_complete
@@ -52,6 +49,10 @@
 #include <asm/mmu_context.h>
 #include <asm/processor.h>
 
+/*
+ * Called during copy_process() for a clone thread, so we can fix
+ * things up for the livedump.
+ */
 int livedump_setup_clone(struct task_struct *clone,
 			 struct livedump_context *dump,
 			 unsigned long clone_flags)
@@ -171,8 +172,10 @@ static struct task_struct *livedump_clone(struct livedump_context *dump,
 }
 
 /*
- * Clone one thread, force the new thread group leader
- * to perform the dump if we're the last thread cloned.
+ * Wait for all other threads to stop, clone the original group
+ * leader, and then let the other threads go to do their cloning.
+ * Once they have all cloned, clean ourself up and wake up the thread
+ * running the processess.
  */
 static void livedump_clone_leader(struct livedump_context *dump)
 {
@@ -235,9 +238,10 @@ static inline void livedump_thread_clone_done(struct livedump_context *dump)
 }
 
 /*
- * A thread that needs to be cloned needs to stop.
+ * A thread that needs to be cloned needs to stop and wait for the
+ * group leader to be cloned, then do the clone based on that.
  */
-static void livedump_handle_stop(struct livedump_context *dump)
+static void livedump_handle_wait_then_clone_child(struct livedump_context *dump)
 {
 	atomic_inc(&dump->nr_stopped);
 	livedump_stop_done(dump);
@@ -256,8 +260,7 @@ static void livedump_handle_stop(struct livedump_context *dump)
 
 /*
  * Complete the dump in the cloned leader. Core file is dumped only if
- * dump->status is 0 before dumping, i.e. there was no errors on the
- * previous stages.
+ * there were no errors on the previous stages.
  */
 static void livedump_perform_dump(siginfo_t *info,
 				  struct livedump_context *dump)
@@ -287,6 +290,9 @@ static void livedump_perform_dump(siginfo_t *info,
 	/* NOTREACHED */
 }
 
+/*
+ * Called from get_signal()
+ */
 void livedump_handle_signal(siginfo_t *info)
 {
 	struct livedump_context *dump = livedump_task_dump(current);
@@ -297,7 +303,8 @@ void livedump_handle_signal(siginfo_t *info)
 	if (livedump_task_is_clone_child(current)) {
 		/*
 		 * Clone children are never allowed to run, so trap them
-		 * here until they are killed.
+		 * here until they are killed.  This shouldn't happen,
+		 * maybe this should be a BUG()?
 		 */
 		schedule_timeout_killable(1);
 		current->livedump_sigpending = true;
@@ -310,9 +317,10 @@ void livedump_handle_signal(siginfo_t *info)
 		if (current == dump->orig_leader)
 			livedump_clone_leader(dump);
 		else
-			livedump_handle_stop(dump);
+			livedump_handle_wait_then_clone_child(dump);
 		break;
 	case LIVEDUMP_PERFORM_DUMP:
+		/* Only the clone leader should run here. */
 		BUG_ON(!__livedump_task_is_clone(current, dump) ||
 		       !thread_group_leader(current));
 		livedump_perform_dump(info, dump);
@@ -451,7 +459,7 @@ int do_livedump(struct task_struct *tsk, struct livedump_param *param)
 			 */
 			livedump_setup_stop_task(current, dump);
 			livedump_signal_leader(orig_leader, false);
-			livedump_handle_stop(dump);
+			livedump_handle_wait_then_clone_child(dump);
 		}
 	} else {
 		livedump_sig_threads(dump, orig_leader);
