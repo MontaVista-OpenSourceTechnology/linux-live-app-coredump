@@ -293,12 +293,9 @@ static void livedump_perform_dump(siginfo_t *info,
 /*
  * Called from get_signal()
  */
-void livedump_handle_signal(siginfo_t *info)
+void __livedump_handle_signal(siginfo_t *info)
 {
 	struct livedump_context *dump = livedump_task_dump(current);
-
-	if (!__task_in_livedump(dump))
-		return;
 
 	if (livedump_task_is_clone_child(current)) {
 		/*
