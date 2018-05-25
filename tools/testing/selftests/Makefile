@@ -22,6 +22,7 @@ TARGETS += ir
 TARGETS += kcmp
 TARGETS += kvm
 TARGETS += lib
+TARGETS += livedump
 TARGETS += livepatch
 TARGETS += membarrier
 TARGETS += memfd
