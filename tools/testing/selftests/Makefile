@@ -40,6 +40,7 @@ TARGETS += kexec
 TARGETS += kvm
 TARGETS += landlock
 TARGETS += lib
+TARGETS += livedump
 TARGETS += livepatch
 TARGETS += lkdtm
 TARGETS += membarrier
