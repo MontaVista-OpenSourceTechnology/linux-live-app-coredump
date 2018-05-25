@@ -10129,6 +10129,7 @@ M:	Corey Minyard <cminyard@mvista.com>
 S:	Maintained
 F:	include/linux/livedump.h
 F:	kernel/livedump.c
+F:	tools/testing/selftests/livedump/*
 
 LIVE PATCHING
 M:	Josh Poimboeuf <jpoimboe@redhat.com>
