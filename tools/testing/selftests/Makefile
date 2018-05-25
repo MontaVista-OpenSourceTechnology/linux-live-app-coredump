@@ -52,6 +52,7 @@ TARGETS += kselftest_harness
 TARGETS += kvm
 TARGETS += landlock
 TARGETS += lib
+TARGETS += livedump
 TARGETS += livepatch
 TARGETS += lkdtm
 TARGETS += lsm
