@@ -12217,6 +12217,7 @@ N:	litex
 LIVE APPLICATION COREDUMP
 M:	Corey Minyard <cminyard@mvista.com>
 S:	Maintained
+F:	Documentation/livedup.rst
 F:	include/linux/livedump.h
 F:	kernel/livedump.c
 F:	tools/testing/selftests/livedump/*
