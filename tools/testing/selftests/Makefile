@@ -25,6 +25,7 @@ TARGETS += kcmp
 TARGETS += kexec
 TARGETS += kvm
 TARGETS += lib
+TARGETS += livedump
 TARGETS += livepatch
 TARGETS += lkdtm
 TARGETS += membarrier
