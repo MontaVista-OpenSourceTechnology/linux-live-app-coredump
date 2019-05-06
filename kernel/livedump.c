@@ -33,7 +33,7 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/sched.h>
+#include <linux/sched/task_stack.h>
 #include <linux/sched/mm.h>
 #include <linux/signal.h>
 #include <linux/file.h>
