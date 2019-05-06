@@ -1226,7 +1226,7 @@ copy_livedump_param_from_user32(struct livedump_param *to,
 {
 	long err;
 
-	if (!access_ok (VERIFY_READ, from, sizeof(struct compat_livedump_param)))
+	if (!access_ok(from, sizeof(struct compat_livedump_param)))
 		return -EFAULT;
 
 	err = __get_user(to->sched_nice, &from->sched_nice);
