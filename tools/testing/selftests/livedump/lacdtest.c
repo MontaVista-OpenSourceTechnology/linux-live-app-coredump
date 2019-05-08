@@ -368,13 +368,13 @@ struct coredump_tests {
 		"spawner-self",
 		"A thread takes a coredump of itself while multiple\n"
 		"  threads spawn other threads.",
-		coredump_with_threads, spawner, coredump_from_fork
+		coredump_with_threads, spawner, coredump_self
 	},
 	{
 		"spawner-selfth",
 		"A sub-thread takes a coredump of itself while multiple\n"
 		"  threads spawn other threads.",
-		coredump_with_threads, spawner, coredump_from_fork
+		coredump_with_threads, spawner, coredump_from_th
 	},
 	{
 		"spawner-proc",
@@ -386,13 +386,13 @@ struct coredump_tests {
 		"io-self",
 		"A thread takes a coredump of itself while multiple\n"
 		"  threads do I/O.",
-		coredump_with_threads, do_io, coredump_from_fork
+		coredump_with_threads, do_io, coredump_self
 	},
 	{
 		"io-selfth",
 		"A sub-thread takes a coredump of itself while\n"
 		"  multiple threads do I/O.",
-		coredump_with_threads, do_io, coredump_from_fork
+		coredump_with_threads, do_io, coredump_from_th
 	},
 	{
 		"io-proc",
