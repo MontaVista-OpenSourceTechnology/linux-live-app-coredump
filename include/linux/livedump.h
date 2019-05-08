@@ -259,7 +259,7 @@ static inline void livedump_wake_stopped(struct livedump_context *dump)
 		 * or just exit if there was an error in the first
 		 * clone.
 		 */
-		for (; i >= 0; i--)
+		for (; i > 0; i--)
 			complete(&dump->dump_leader_ready);
 
 		wait_for_completion(&dump->threads_cloned);
