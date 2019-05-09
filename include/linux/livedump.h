@@ -135,7 +135,8 @@ static inline void livedump_set_task_dump(struct task_struct *tsk,
 	tsk->livedump = dump;
 }
 
-static inline struct livedump_context *livedump_task_dump(struct task_struct *tsk)
+static inline struct livedump_context *livedump_task_dump(
+	struct task_struct *tsk)
 {
 	return tsk->livedump;
 }
@@ -153,7 +154,7 @@ static inline void put_dump(struct livedump_context *dump)
 	kref_put(&dump->ref, livedump_ref_done);
 }
 
-static inline int __task_in_livedump(struct livedump_context *dump)
+static inline bool __task_in_livedump(struct livedump_context *dump)
 {
 	/*
 	 * The dump variable for a thread group leader is set to
@@ -164,39 +165,39 @@ static inline int __task_in_livedump(struct livedump_context *dump)
 	return !IS_ERR_OR_NULL(dump);
 }
 
-static inline int task_in_livedump(struct task_struct *tsk)
+static inline bool task_in_livedump(struct task_struct *tsk)
 {
 	return __task_in_livedump(livedump_task_dump(tsk));
 }
 
-static inline int task_in_livedump_stage(struct livedump_context *dump,
-					 livedump_stage_t check_stage)
+static inline bool task_in_livedump_stage(struct livedump_context *dump,
+					  livedump_stage_t check_stage)
 {
 	return __task_in_livedump(dump) ?
 		(livedump_stage(dump) == check_stage) : 0;
 }
 
-static inline int __livedump_task_is_clone_child(struct task_struct *tsk,
-						 struct livedump_context *dump)
+static inline bool __livedump_task_is_clone_child(struct task_struct *tsk,
+						  struct livedump_context *dump)
 {
 	return (__task_in_livedump(dump) &&
 		tsk != tsk->group_leader &&
 		dump->dumped_leader == tsk->group_leader);
 }
 
-static inline int livedump_task_is_clone_child(struct task_struct *tsk)
+static inline bool livedump_task_is_clone_child(struct task_struct *tsk)
 {
 	return __livedump_task_is_clone_child(tsk, livedump_task_dump(tsk));
 }
 
-static inline int __livedump_task_is_clone(struct task_struct *tsk,
-					   struct livedump_context *dump)
+static inline bool __livedump_task_is_clone(struct task_struct *tsk,
+					    struct livedump_context *dump)
 {
 	return (__task_in_livedump(dump) &&
 		tsk->group_leader == dump->dumped_leader);
 }
 
-static inline int livedump_task_is_clone(struct task_struct *tsk)
+static inline bool livedump_task_is_clone(struct task_struct *tsk)
 {
 	return __livedump_task_is_clone(tsk, livedump_task_dump(tsk));
 }
@@ -335,12 +336,12 @@ static inline int livedump_check_tsk_copy(struct task_struct *tsk,
  * Validates that a livedump clone thread is allowed to receive a signal.
  * Used to keep other nefarious processes from messing up a livedump.
  */
-static inline int livedump_check_signal_send(int sig, struct task_struct *tsk)
+static inline bool livedump_check_signal_send(int sig, struct task_struct *tsk)
 {
 	struct livedump_context *dump = livedump_task_dump(tsk);
 
 	if (!__task_in_livedump(dump))
-		return 1;
+		return true;
 
 	if (__livedump_task_is_clone_child(tsk, dump)) {
 		/*
@@ -349,13 +350,13 @@ static inline int livedump_check_signal_send(int sig, struct task_struct *tsk)
 		 * thread group leader.  Just ignore everything else.
 		 */
 		if (current != dump->dumped_leader)
-			return 0;
+			return false;
 	} else if (__livedump_task_is_clone(tsk, dump)) {
 		/* The clone thread group leader ignores all signals. */
-		return 0;
+		return false;
 	}
 
-	return 1;
+	return true;
 }
 
 extern void __livedump_handle_signal(siginfo_t *info);
@@ -376,15 +377,15 @@ struct livedump_context;
 static inline void livedump_set_task_dump(struct task_struct *tsk,
 					  struct livedump_context *dump) { }
 static inline void livedump_handle_signal(siginfo_t *info) { }
-static inline int task_in_livedump(struct task_struct *tsk) { return 0; }
+static inline bool task_in_livedump(struct task_struct *tsk) { return 0; }
 static inline void livedump_handle_exit(struct task_struct *tsk) { }
 static inline int livedump_check_tsk_copy(struct task_struct *tsk,
 				unsigned long clone_flags) { return 0; }
 static inline void livedump_check_tsk_exit(struct task_struct *tsk) { }
-static inline int livedump_task_is_clone(struct task_struct *tsk) { return 0; }
-static inline int livedump_task_is_clone_child(struct task_struct *tsk)
+static inline bool livedump_task_is_clone(struct task_struct *tsk) { return 0; }
+static inline bool livedump_task_is_clone_child(struct task_struct *tsk)
 { return 0; }
-static inline int livedump_check_signal_send(int sig, struct task_struct *tsk)
+static inline bool livedump_check_signal_send(int sig, struct task_struct *tsk)
 { return 1; }
 static inline bool is_livedump_sigpending(struct task_struct *tsk)
 { return 0; }
