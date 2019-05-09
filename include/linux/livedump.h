@@ -132,6 +132,11 @@ static inline livedump_stage_t livedump_stage(struct livedump_context *dump)
 static inline void livedump_set_task_dump(struct task_struct *tsk,
 					  struct livedump_context *dump)
 {
+	/*
+	 * Match for __task_in_livedump(), make sure we keep memory
+	 * straight, especially dump->stage with tsk->dump.
+	 */
+	smp_wmb();
 	tsk->livedump = dump;
 }
 
@@ -162,7 +167,14 @@ static inline bool __task_in_livedump(struct livedump_context *dump)
 	 * where it can be halted to complete a livedump.  That
 	 * way you can't start a livedump after that point.
 	 */
-	return !IS_ERR_OR_NULL(dump);
+	if (IS_ERR_OR_NULL(dump))
+		return false;
+	/*
+	 * Make sure memory is sane before we go on.  Otherwise
+	 * dump->stage might be incorrect on other processors.
+	 */
+	smp_rmb();
+	return true;
 }
 
 static inline bool task_in_livedump(struct task_struct *tsk)
