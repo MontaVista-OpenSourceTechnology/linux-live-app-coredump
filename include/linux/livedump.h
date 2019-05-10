@@ -382,18 +382,19 @@ struct livedump_context;
 static inline void livedump_set_task_dump(struct task_struct *tsk,
 					  struct livedump_context *dump) { }
 static inline void livedump_handle_signal(siginfo_t *info) { }
-static inline bool task_in_livedump(struct task_struct *tsk) { return 0; }
+static inline bool task_in_livedump(struct task_struct *tsk) { return false; }
 static inline void livedump_handle_exit(struct task_struct *tsk) { }
 static inline int livedump_check_tsk_copy(struct task_struct *tsk,
 				unsigned long clone_flags) { return 0; }
 static inline void livedump_check_tsk_exit(struct task_struct *tsk) { }
-static inline bool livedump_task_is_clone(struct task_struct *tsk) { return 0; }
+static inline bool livedump_task_is_clone(struct task_struct *tsk)
+{ return false; }
 static inline bool livedump_task_is_clone_child(struct task_struct *tsk)
-{ return 0; }
+{ return false; }
 static inline bool livedump_check_signal_send(int sig, struct task_struct *tsk)
-{ return 1; }
+{ return true; }
 static inline bool is_livedump_sigpending(struct task_struct *tsk)
-{ return 0; }
+{ return false; }
 static inline void clear_livedump_sigpending(struct task_struct *tsk) { }
 
 #endif /* CONFIG_LIVEDUMP */
