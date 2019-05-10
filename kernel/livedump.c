@@ -345,7 +345,10 @@ static void livedump_sig_threads(struct livedump_context *dump,
 
 	/*
 	 * Request all the other threads to stop.  siglock protects
-	 * the thread list.
+	 * the thread list, and keeps any thread from handling the
+	 * signal until the lock is released, to avoid a thread handling
+	 * the signal and decrementing nr_stop_remains to zero before
+	 * the increment for the next thread is done.
 	 */
 	spin_lock_irq(&t->sighand->siglock);
 	for (p = next_thread(t); p != t; p = next_thread(p)) {
@@ -435,6 +438,17 @@ int do_livedump(struct task_struct *tsk, struct livedump_param *param)
 		goto out_err;
 
 	if (current->group_leader == orig_leader) {
+		if (current != orig_leader)
+			/*
+			 * Do this first.  Otherwise all the other
+			 * threads may get set up then run their
+			 * signal handlers, decrementing
+			 * nr_stop_remains to zero before the current
+			 * task increments nr_stop_remains, resulting
+			 * in the dump process continuing when it
+			 * shouldn't.
+			 */
+			livedump_setup_stop_task(current, dump);
 		livedump_sig_threads(dump, current);
 
 		if (current == orig_leader) {
@@ -449,7 +463,6 @@ int do_livedump(struct task_struct *tsk, struct livedump_param *param)
 			 * pretend like we were signaled and wake the
 			 * leader.
 			 */
-			livedump_setup_stop_task(current, dump);
 			livedump_signal_leader(orig_leader, false);
 			livedump_handle_stop(dump);
 		}
