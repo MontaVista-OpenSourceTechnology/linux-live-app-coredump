@@ -57,9 +57,6 @@ struct livedump_context {
 	/* Number of references to dump context. */
 	struct kref ref;
 
-	/* Number of original threads still in the dump process. */
-	struct kref orig_cloning;
-
 	/*
 	 * Namespace for the new PIDs.  We create a new namespace so
 	 * we can keep the pid numbers the same for the cloned
