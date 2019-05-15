@@ -206,9 +206,9 @@ static void livedump_clone_leader(struct livedump_context *dump)
 	 */
 	dump->orig_leader = NULL;
 	livedump_set_task_dump(current, NULL);
-	put_dump(dump);
 
 	complete(&dump->orig_leader_complete);
+	put_dump(dump);
 }
 
 static void livedump_clone_child(struct livedump_context *dump)
