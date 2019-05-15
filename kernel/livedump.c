@@ -89,6 +89,7 @@ int livedump_setup_clone(struct task_struct *clone,
 		mmput(oldmm);
 
 		clone->group_leader = dump->dumped_leader;
+		clone->tgid = clone->group_leader->tgid;
 
 		clone->signal = dump->dumped_leader->signal;
 
