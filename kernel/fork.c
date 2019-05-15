@@ -1457,9 +1457,9 @@ struct task_struct *copy_process(unsigned long clone_flags,
 		goto bad_fork_free_pid;
 
 	if (clone_flags & CLONE_THREAD) {
-		current->signal->nr_threads++;
-		atomic_inc(&current->signal->live);
-		atomic_inc(&current->signal->sigcnt);
+		p->signal->nr_threads++;
+		atomic_inc(&p->signal->live);
+		atomic_inc(&p->signal->sigcnt);
 		list_add_tail_rcu(&p->thread_group, &p->group_leader->thread_group);
 	}
 
