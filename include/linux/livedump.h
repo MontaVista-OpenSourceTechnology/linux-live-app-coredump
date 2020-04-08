@@ -391,7 +391,9 @@ static inline void livedump_handle_signal(kernel_siginfo_t *info) { }
 static inline bool task_in_livedump(struct task_struct *tsk) { return false; }
 static inline void livedump_handle_exit(struct task_struct *tsk) { }
 static inline int livedump_check_tsk_copy(struct task_struct *tsk,
-				unsigned long clone_flags) { return 0; }
+				unsigned long clone_flags,
+				unsigned long clone_internal_flags)
+{ return 0; }
 static inline void livedump_check_tsk_exit(struct task_struct *tsk) { }
 static inline bool livedump_task_is_clone(struct task_struct *tsk)
 { return false; }
