@@ -3170,63 +3170,69 @@ static ssize_t livedump_write(struct file *file, const char __user *buf,
 	struct livedump_param lparam;
 	int ret = 0;
 	char *curr, *next;
+	struct task_struct *tsk;
 
 	if (pdata->pos == -1) /* Only do this once per open. */
 		return count;
 
-	if (count + pdata->pos > sizeof(pdata->buf))
+	/* Leave one byte at the end for a \0. */
+	if (count + pdata->pos > sizeof(pdata->buf) - 1)
 		return -EFBIG;
 	if (copy_from_user(pdata->buf + pdata->pos, buf, count))
 		return -EFAULT;
+	pdata->pos += count;
+	pdata->buf[pdata->pos] = '\0';
 
+	/* Wait until we get a full line of data. */
 	curr = strchr(pdata->buf, '\n');
-	if (curr) {
-		struct task_struct *tsk = get_proc_task(file_inode(file));
+	if (!curr)
+		return count;
 
-		pdata->pos = -1;
+	pdata->pos = -1;
+	*curr = '\0';
 
-		if (!tsk)
-			return -ESRCH;
+	/* Now parse the input line for parameters. */
+	init_livedump_param(&lparam);
+	next = pdata->buf;
+	curr = strsep(&next, " \t");
+	for (; curr && !ret; curr = strsep(&next, " \t")) {
+		char *parm, *val;
 
-		init_livedump_param(&lparam);
-
-		*curr = '\0';
-		next = pdata->buf;
-		curr = strsep(&next, " \t");
-		for (; curr; curr = strsep(&next, " \t")) {
-			char *parm, *val, *end = "";
-
-			if (!*curr)
-				continue;
-			val = curr;
-			parm = strsep(&val, "=");
-			if (strcmp(parm, "sched_prio") == 0) {
-				lparam.sched_nice = simple_strtol(val, &end, 0);
-			} else if (strcmp(parm, "io_prio") == 0) {
-				lparam.io_prio = simple_strtol(val, &end, 0);
-			} else if (strcmp(parm, "oom_adj") == 0) {
-				lparam.oom_adj = simple_strtol(val, &end, 0);
-			} else if (strcmp(parm, "core_limit") == 0) {
-				lparam.core_limit_set = true;
-				if (strcmp(val, "unlimited") == 0)
-					lparam.core_limit = RLIM_INFINITY;
-				else
-					lparam.core_limit =
-						simple_strtoul(val, &end, 0);
-			} else
-				ret = -EINVAL;
-			if (*end)
-				ret = -EINVAL;
+		if (!*curr)
+			continue;
+		val = curr;
+		parm = strsep(&val, "=");
+		if (strcmp(parm, "sched_prio") == 0) {
+			ret = kstrtoint(val, 0, &lparam.sched_nice);
+		} else if (strcmp(parm, "io_prio") == 0) {
+			ret = kstrtoint(val, 0, &lparam.io_prio);
+		} else if (strcmp(parm, "oom_adj") == 0) {
+			ret = kstrtoint(val, 0, &lparam.oom_adj);
+		} else if (strcmp(parm, "core_limit") == 0) {
+			lparam.core_limit_set = true;
+			if (strcmp(val, "unlimited") == 0)
+				lparam.core_limit = RLIM_INFINITY;
+			else
+				ret = kstrtoul(val, 0, &lparam.core_limit);
+		} else {
+			ret = -EINVAL;
 		}
-
-		if (!ret)
-			ret = do_livedump(tsk, &lparam);
-
-		put_task_struct(tsk);
-
-		if (ret < 0)
-			return ret;
 	}
+
+	if (ret)
+		return ret;
+
+	tsk = get_proc_task(file_inode(file));
+	if (!tsk)
+		return -ESRCH;
+
+	ret = do_livedump(tsk, &lparam);
+
+	put_task_struct(tsk);
+
+	if (ret < 0)
+		return ret;
+
 	return count;
 }
 
