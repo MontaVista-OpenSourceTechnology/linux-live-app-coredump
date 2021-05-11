@@ -120,19 +120,18 @@ int coredump_proc(const char *name, int pid)
 		free(fname);
 		return -1;
 	}
-	free(fname);
 
 	rv = write(fd, dumpstr, strlen(dumpstr));
-	if (rv == -1) {
+	if (rv == -1)
 		fprintf(stderr, "Error writing to '%s': %s\n", fname,
 			strerror(errno));
-		close(fd);
-		return -1;
-	}
+	else
+		rv = 0;
 
+	free(fname);
 	close(fd);
 
-	return 0;
+	return rv;
 }
 
 int coredump_self(void)
