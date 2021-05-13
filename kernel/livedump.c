@@ -163,6 +163,8 @@ static struct task_struct *livedump_clone(struct livedump_context *dump,
 	tid = pid_vnr(opid);
 	args.set_tid = &tid;
 	args.set_tid_size = 1;
+	args.pid_ns = dump->pid_ns;
+	args.internal_flags = CLONE_INT_LIVEDUMP;
 	put_pid(opid);
 
 	/*
@@ -170,17 +172,7 @@ static struct task_struct *livedump_clone(struct livedump_context *dump,
 	 * thread.  So make sure no signals are pending.
 	 */
 	livedump_block_signals(&saveset);
-
-	/*
-	 * Override the old namespace temporarily to use the dump's
-	 * namespace.
-	 */
-	old_pid_ns = current->nsproxy->pid_ns_for_children;
-	current->nsproxy->pid_ns_for_children = dump->pid_ns;
-
-	clone = copy_process(CLONE_INT_LIVEDUMP, NULL, 0, NUMA_NO_NODE, &args);
-
-	current->nsproxy->pid_ns_for_children = old_pid_ns;
+	clone = copy_process(NULL, 0, NUMA_NO_NODE, &args);
 	livedump_unblock_signals(&saveset);
 
 	return clone;

@@ -1841,7 +1841,6 @@ static void copy_oom_score_adj(u64 clone_flags, struct task_struct *tsk)
  * flags). The actual kick-off is left to the caller.
  */
 __latent_entropy struct task_struct *copy_process(
-					u64 clone_internal_flags,
 					struct pid *pid,
 					int trace,
 					int node,
@@ -1895,7 +1894,7 @@ __latent_entropy struct task_struct *copy_process(
 	 * Livedump is a special case, it handles all the setup itself.
 	 */
 	if (clone_flags & CLONE_THREAD &&
-			!(clone_internal_flags & CLONE_INT_LIVEDUMP)) {
+			!(args->internal_flags & CLONE_INT_LIVEDUMP)) {
 		if ((clone_flags & (CLONE_NEWUSER | CLONE_NEWPID)) ||
 		    (task_active_pid_ns(current) != nsp->pid_ns_for_children))
 			return ERR_PTR(-EINVAL);
@@ -2112,8 +2111,11 @@ __latent_entropy struct task_struct *copy_process(
 	stackleak_task_init(p);
 
 	if (pid != &init_struct_pid) {
-		pid = alloc_pid(p->nsproxy->pid_ns_for_children, args->set_tid,
-				args->set_tid_size);
+		struct pid_namespace *ns = args->pid_ns;
+
+		if (!ns)
+			ns = p->nsproxy->pid_ns_for_children;
+		pid = alloc_pid(ns, args->set_tid, args->set_tid_size);
 		if (IS_ERR(pid)) {
 			retval = PTR_ERR(pid);
 			goto bad_fork_cleanup_thread;
@@ -2247,7 +2249,7 @@ __latent_entropy struct task_struct *copy_process(
 		goto bad_fork_cancel_cgroup;
 	}
 
-	retval = livedump_check_tsk_copy(p, clone_flags, clone_internal_flags);
+	retval = livedump_check_tsk_copy(p, clone_flags, args->internal_flags);
 	if (retval)
 		goto bad_fork_cancel_cgroup;
 
@@ -2400,7 +2402,7 @@ struct task_struct *fork_idle(int cpu)
 		.flags = CLONE_VM,
 	};
 
-	task = copy_process(0, &init_struct_pid, 0, cpu_to_node(cpu), &args);
+	task = copy_process(&init_struct_pid, 0, cpu_to_node(cpu), &args);
 	if (!IS_ERR(task)) {
 		init_idle_pids(task);
 		init_idle(task, cpu);
@@ -2463,7 +2465,7 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 			trace = 0;
 	}
 
-	p = copy_process(0, NULL, trace, NUMA_NO_NODE, args);
+	p = copy_process(NULL, trace, NUMA_NO_NODE, args);
 	add_latent_entropy();
 
 	if (IS_ERR(p))
