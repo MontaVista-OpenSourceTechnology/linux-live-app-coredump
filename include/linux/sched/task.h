@@ -18,6 +18,9 @@ struct css_set;
 /* All the bits taken by the old clone syscall. */
 #define CLONE_LEGACY_FLAGS 0xffffffffULL
 
+/* For internal_flags values. */
+#define CLONE_INT_LIVEDUMP	(1ULL << 0) /* set if cloned for a live dump */
+
 struct kernel_clone_args {
 	u64 flags;
 	int __user *pidfd;
@@ -33,6 +36,8 @@ struct kernel_clone_args {
 	int cgroup;
 	struct cgroup *cgrp;
 	struct css_set *cset;
+	u64 internal_flags;
+	struct pid_namespace *pid_ns;
 };
 
 /*
@@ -98,11 +103,8 @@ extern void exit_itimers(struct signal_struct *);
 extern long _do_fork(struct kernel_clone_args *kargs);
 extern bool legacy_clone_args_valid(const struct kernel_clone_args *kargs);
 extern long do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *);
-extern struct task_struct *copy_process(u64, struct pid *, int, int,
+extern struct task_struct *copy_process(struct pid *, int, int,
 					struct kernel_clone_args *);
-
-/* For clone_internal_flags in copy_process(). */
-#define CLONE_INT_LIVEDUMP	0x00000001 /* set if cloned for a live dump */
 
 struct task_struct *fork_idle(int);
 struct mm_struct *copy_init_mm(void);
