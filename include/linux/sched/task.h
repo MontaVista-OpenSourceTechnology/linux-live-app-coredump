@@ -38,6 +38,7 @@ struct kernel_clone_args {
 	void *fn_arg;
 	struct cgroup *cgrp;
 	struct css_set *cset;
+	struct pid_namespace *pid_ns;
 };
 
 /*
