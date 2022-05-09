@@ -151,7 +151,6 @@ static struct task_struct *livedump_clone(struct livedump_context *dump,
 {
 	/* We use the same pid as the cloned thread. */
 	struct pid *opid = get_task_pid(current, PIDTYPE_PID);
-	struct pid_namespace *old_pid_ns;
 	struct task_struct *clone;
 	sigset_t saveset;
 	struct kernel_clone_args args;
