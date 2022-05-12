@@ -1296,7 +1296,7 @@ SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
 		ret = ptrace_livedump
 			(child, (struct livedump_param __user *)data);
 #else
-		ret = -ENOTSUP;
+		ret = -ENOTSUPP;
 #endif
 		goto out_put_task_struct;
 	}
@@ -1491,7 +1491,7 @@ COMPAT_SYSCALL_DEFINE4(ptrace, compat_long_t, request, compat_long_t, pid,
 		else
 			ret = ptrace_livedump(child, NULL);
 #else
-		ret = -ENOTSUP;
+		ret = -ENOTSUPP;
 #endif
 		goto out_put_task_struct;
 	}
