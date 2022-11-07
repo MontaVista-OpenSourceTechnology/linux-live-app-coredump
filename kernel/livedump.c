@@ -460,7 +460,7 @@ int do_livedump(struct task_struct *tsk, struct livedump_param *param)
 
 	write_unlock_irq(&tasklist_lock);
 	if (ret)
-		goto out_err;
+		goto out_err_pidns;
 
 	if (current->group_leader == orig_leader) {
 		if (current != orig_leader)
@@ -520,6 +520,8 @@ int do_livedump(struct task_struct *tsk, struct livedump_param *param)
 
 	return ret;
 
+out_err_pidns:
+	put_pid_ns(dump->pid_ns);
 out_err:
 	kfree(dump);
 	return ret;
